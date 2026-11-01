@@ -4,7 +4,8 @@ const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
 const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
 
 // Local dev without Upstash creds: in-process memory. Not durable, never used on Vercel.
-const mem = new Map<string, unknown>();
+const g = globalThis as unknown as { __mem?: Map<string, unknown> };
+const mem = (g.__mem ??= new Map<string, unknown>()); // shared across route/page bundles in dev
 const redis = url && token ? new Redis({ url, token }) : null;
 
 if (!redis && process.env.VERCEL) throw new Error("Upstash Redis env vars missing");
