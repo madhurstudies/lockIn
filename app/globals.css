@@ -76,6 +76,14 @@ a { color: inherit; text-decoration: none; }
 .nav a[aria-current="page"] { background: var(--active); color: var(--text); }
 .bar .quiet:hover, .nav a:hover { color: var(--text); }
 .bar .icon { width: 36px; padding: 0; justify-content: center; }
+/* phones: tabs become icons; wider screens keep the words */
+.nav a svg { display: none; }
+@media (max-width: 599px) {
+  .nav { gap: 4px; }
+  .nav a { width: 44px; padding: 0; justify-content: center; }
+  .nav a svg { display: block; }
+  .navlabel { display: none; }
+}
 main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 
 /* login */
