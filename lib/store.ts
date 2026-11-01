@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { DEFAULTS, type Settings } from "./settings";
 import { get, set } from "./db";
 import { elapsedMs, isPaused, MAX_PLANNED_MS, type Mode, type Session, type Tag } from "./session";
 
@@ -60,4 +61,14 @@ export async function addTag(name: unknown, color: unknown): Promise<Tag> {
   const tag = { id: randomUUID(), name: n, color };
   await set("tags", [...(await getTags()), tag]);
   return tag;
+}
+
+export async function getSettings(): Promise<Settings> {
+  return { ...DEFAULTS, ...((await get<Partial<Settings>>("settings")) ?? {}) };
+}
+
+export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
+  const next = { ...(await getSettings()), ...patch };
+  await set("settings", next);
+  return next;
 }
