@@ -9,6 +9,20 @@ import { beep, doubleBeep, unlock } from "@/lib/sound";
 const SWATCHES = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#30b0c7", "#0a84ff", "#ff2d55", "#8e8e93"];
 const ITEM = 36; // wheel row height, keep in sync with .wheel css
 
+/** Register this device for the server's "Time's up" push (lib/alarm.ts). Quiet no-op when push isn't configured. */
+async function subscribePush() {
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    if (!reg?.pushManager) return;
+    const { key } = await (await fetch("/api/push")).json();
+    if (!key) return;
+    const raw = atob(key.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (key.length % 4)) % 4));
+    const sub = (await reg.pushManager.getSubscription())
+      ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, (c) => c.charCodeAt(0)) }));
+    await fetch("/api/push", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sub) });
+  } catch {} // unsupported browser or denied: the page-side alert still works
+}
+
 function fmt(ms: number, round: "floor" | "ceil") {
   const s = Math[round](ms / 1000);
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -105,8 +119,14 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   }
 
   const now = () => Date.now() + offset;
+  const activeRef = useRef(initialActive);
   const sync = useCallback((j: { now: number; active: Session | null }, t0: number) => {
     const o = j.now - (t0 + Date.now()) / 2; // assume symmetric latency
+    const prev = activeRef.current;
+    // The server already closed a countdown that ran out while this page was frozen or away.
+    if (prev?.mode === "countdown" && !j.active && !finishing.current && !isPaused(prev) && remainingMs(prev, j.now) <= 0)
+      setSaved(`Done · ${fmt(prev.plannedMs!, "floor")}${prev.tag ? ` · ${prev.tag.name}` : ""}`);
+    activeRef.current = j.active;
     setOffset(o);
     setT(Date.now() + o);
     setActive(j.active);
@@ -178,11 +198,14 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.id, pausedKey]);
 
-  // ponytail: best-effort end alert; the OS may freeze a hidden page. Upgrade path: delayed Web Push (e.g. QStash).
+  // Page-side end alert. The OS may freeze a hidden page, so the server also pushes one (lib/alarm.ts);
+  // both use the "lockin-done" tag, so the second replaces the first instead of stacking.
   useEffect(() => {
     if (!expired || !("Notification" in window) || Notification.permission !== "granted") return;
     navigator.serviceWorker?.ready.then((reg) =>
-      reg.showNotification("Time's up", { tag: "lockin-done", icon: "/icons/icon-192.png", body: saved || "Session complete" }));
+      reg.showNotification("Time's up", {
+        tag: "lockin-done", icon: "/icons/icon-192.png", body: saved || "Session complete", requireInteraction: true, vibrate: [200, 100, 200],
+      } as NotificationOptions));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expired]);
 
@@ -227,7 +250,10 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     setSaved("");
     unlock(); // allow bleeps later, this is inside the click
     if (settings.sounds) beep();
-    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
+    if ("Notification" in window) {
+      if (Notification.permission === "default") Notification.requestPermission().then((p) => { if (p === "granted") void subscribePush(); });
+      else if (Notification.permission === "granted") subscribePush();
+    }
     send({ action: "start", mode, tagId, plannedMs: mode === "countdown" ? plannedMs : undefined });
   };
   const stop = () => {

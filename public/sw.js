@@ -32,5 +32,23 @@ self.addEventListener("notificationclick", (e) => {
   );
 });
 
+// Server-sent "Time's up" (lib/alarm.ts): arrives even when the page is frozen or closed.
+self.addEventListener("push", (e) => {
+  const d = e.data ? e.data.json() : {};
+  e.waitUntil(
+    (async () => {
+      (await self.registration.getNotifications({ tag: "lockin" })).forEach((n) => n.close());
+      await self.registration.showNotification(d.title || "Time's up", {
+        tag: "lockin-done",
+        icon: "/icons/icon-192.png",
+        body: d.body || "Session complete",
+        requireInteraction: true,
+        vibrate: [200, 100, 200],
+      });
+      (await self.clients.matchAll({ type: "window", includeUncontrolled: true })).forEach((c) => c.postMessage("sync"));
+    })()
+  );
+});
+
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));

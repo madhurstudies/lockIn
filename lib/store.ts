@@ -29,6 +29,17 @@ export async function getActive(now = Date.now()): Promise<Session | null> {
   return s;
 }
 
+/** Alarm callback: close countdown `id` if it is due. "early" means it is still running and needs a new alarm. */
+export async function expireIfDue(id: string, now = Date.now()): Promise<Session | "early" | null> {
+  const s = await get<Session>("active");
+  if (!s || s.id !== id || s.mode !== "countdown" || isPaused(s)) return null; // stale alarm
+  const over = elapsedMs(s, now) - (s.plannedMs ?? 0);
+  if (over < -1500) return "early";
+  const end = now - over;
+  await finish(s, end);
+  return { ...s, endedAt: end };
+}
+
 export type Action =
   | { action: "start"; mode: Mode; tagId?: string | null; plannedMs?: number }
   | { action: "pause" | "resume" | "stop" };

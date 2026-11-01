@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { scheduleAlarm } from "@/lib/alarm";
 import { act, getActive, type Action } from "@/lib/store";
 
 export async function GET() {
@@ -12,7 +13,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   const now = Date.now();
   try {
-    return NextResponse.json({ now, active: await act(body, now) });
+    const active = await act(body, now);
+    if (body.action === "start" || body.action === "resume") after(() => scheduleAlarm(active, new URL(req.url).origin, now));
+    return NextResponse.json({ now, active });
   } catch {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
