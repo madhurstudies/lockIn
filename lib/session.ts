@@ -80,3 +80,6 @@ export function formatDur(ms: number): string {
   if (m < 1) return ms < 1000 ? "0m" : `${Math.round(ms / 1000)}s`;
   return m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`;
 }
+
+/** formatDur without a trailing " 00m", for round targets: "4h", "4h 30m", "45m". */
+export const formatShort = (ms: number) => formatDur(ms).replace(/ 00m$/, "");

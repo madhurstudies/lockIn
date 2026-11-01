@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { notifyPrefs, useDataset, usePref, writePref } from "@/lib/device";
-import type { Settings } from "@/lib/settings";
+import { formatShort } from "@/lib/session";
+import { TARGET_MAX, TARGET_STEP, type Settings } from "@/lib/settings";
 
 type Theme = "system" | "light" | "dark";
 
@@ -58,6 +59,18 @@ export default function SettingsView({ initial }: { initial: Settings }) {
         <Row title="Sounds" hint="One bleep on start, two when a countdown ends.">
           <input type="checkbox" role="switch" className="switch" checked={s.sounds} onChange={(e) => update({ sounds: e.target.checked })} aria-label="Sounds" />
         </Row>
+        <Row title="Daily target" hint="Focus goal for each day, midnight to midnight. Shows in the Focus today widget and powers the Lock In helper.">
+          <input type="checkbox" role="switch" className="switch" checked={s.target} onChange={(e) => update({ target: e.target.checked })} aria-label="Daily target" />
+        </Row>
+        {s.target && (
+          <Row title="Target">
+            <select className="select" value={s.targetMins} onChange={(e) => update({ targetMins: Number(e.target.value) })} aria-label="Daily target length">
+              {Array.from({ length: TARGET_MAX / TARGET_STEP }, (_, i) => (i + 1) * TARGET_STEP).map((m) => (
+                <option key={m} value={m}>{formatShort(m * 60_000)}</option>
+              ))}
+            </select>
+          </Row>
+        )}
       </div>
       <p className="error" role="alert">{error}</p>
       <h2 className="grouphead muted">This device</h2>

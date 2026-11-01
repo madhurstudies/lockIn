@@ -1,46 +1,63 @@
 "use client";
 import { useEffect, useState } from "react";
-import { focusIn, formatDur, type Session } from "@/lib/session";
+import { focusIn, formatDur, formatShort, type Session } from "@/lib/session";
 import type { Settings, WidgetId } from "@/lib/settings";
 
 const PRESETS: { id: WidgetId; name: string; about: string }[] = [
-  { id: "focus-today", name: "Focus today", about: "Total focused time since midnight." },
+  { id: "focus-today", name: "Focus today", about: "Focused time since midnight, against your daily target when one is set." },
 ];
 
-function FocusToday({ now, active }: { now: number; active: Session | null }) {
-  const [done, setDone] = useState<Session[]>([]);
-  const from = new Date(now).setHours(0, 0, 0, 0); // overnight sessions split at midnight, as in Analysis
+const DAY = 86_400_000;
+const HISTORY_DAYS = 28; // what the helper learns from
 
+/** Finished sessions since midnight `HISTORY_DAYS` ago, reloaded when the day rolls, a session starts or ends, or the tab returns. */
+function useHistory(today: number, activeId: string | undefined, on: boolean) {
+  const [sessions, setSessions] = useState<Session[]>([]);
   useEffect(() => {
+    if (!on) return;
     let live = true;
     const load = () =>
-      fetch(`/api/sessions?from=${from}&to=${Date.now() + 60_000}`, { cache: "no-store" })
+      fetch(`/api/sessions?from=${today - HISTORY_DAYS * DAY}&to=${Date.now() + 60_000}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : []))
-        .then((s: Session[]) => live && setDone(s));
+        .then((s: Session[]) => live && setSessions(s));
     load();
     const onVis = () => document.visibilityState === "visible" && load();
     document.addEventListener("visibilitychange", onVis);
     return () => { live = false; document.removeEventListener("visibilitychange", onVis); };
-  }, [from, active?.id]); // reload when the window moves or a session starts/ends
+  }, [today, activeId, on]);
+  return sessions;
+}
 
-  const total = [...done, ...(active ? [active] : [])]
-    .filter((s, i, a) => a.findIndex((x) => x.id === s.id) === i)
-    .reduce((sum, s) => sum + focusIn(s, from, now, now), 0);
-
+function FocusToday({ doneMs, targetMs }: { doneMs: number; targetMs: number | null }) {
+  const p = targetMs ? Math.min(1, doneMs / targetMs) : 0;
   return (
     <div className="widget">
       <div className="muted">Focus today</div>
-      <div className="wvalue num">{formatDur(total)}</div>
-      <div className="muted wcap">since midnight</div>
+      <div className="wvalue num">
+        {formatDur(doneMs)}
+        {targetMs !== null && <span className="muted wof"> / {formatShort(targetMs)}</span>}
+      </div>
+      <div className="muted wcap">{targetMs === null ? "since midnight" : p >= 1 ? "Target reached" : `${formatDur(targetMs - doneMs)} to go`}</div>
+      {targetMs !== null && (
+        <div className="wband" role="progressbar" aria-label="Daily target" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p * 100)}>
+          <b style={{ transform: `scaleX(${p})` }} />
+        </div>
+      )}
     </div>
   );
 }
 
 export function WidgetRow({ settings, now, active }: { settings: Settings; now: number; active: Session | null }) {
+  const today = new Date(now).setHours(0, 0, 0, 0); // overnight sessions split at midnight, as in Analysis
+  const history = useHistory(today, active?.id, settings.widgets.length > 0);
   if (!settings.widgets.length) return null;
+
+  const all = [...history.filter((s) => s.id !== active?.id), ...(active ? [active] : [])];
+  const doneMs = all.reduce((sum, s) => sum + focusIn(s, today, now, now), 0);
+  const targetMs = settings.target ? settings.targetMins * 60_000 : null;
   return (
     <div className="widgets" aria-label="Widgets">
-      {settings.widgets.includes("focus-today") && <FocusToday now={now} active={active} />}
+      {settings.widgets.includes("focus-today") && <FocusToday doneMs={doneMs} targetMs={targetMs} />}
     </div>
   );
 }
