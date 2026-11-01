@@ -1,7 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Guide from "./Guide";
-import { elapsedMs, isPaused, MAX_PLANNED_MS, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
+import { WidgetRow, WidgetSheet } from "./Widgets";
+import { elapsedAt, elapsedMs, formatDur, isPaused, MAX_PLANNED_MS, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
+import type { Settings } from "@/lib/settings";
+import { beep, doubleBeep, unlock } from "@/lib/sound";
 
 const SWATCHES = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#30b0c7", "#0a84ff", "#ff2d55", "#8e8e93"];
 const ITEM = 36; // wheel row height, keep in sync with .wheel css
@@ -13,8 +16,8 @@ function fmt(ms: number, round: "floor" | "ceil") {
   return h ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
 }
 
-function Wheel({ label, count, value, onChange, scrollTo }: {
-  label: string; count: number; value: number; onChange: (n: number) => void; scrollTo?: number;
+function Wheel({ label, count, value, onChange, scrollTo, onTapSelected }: {
+  label: string; count: number; value: number; onChange: (n: number) => void; scrollTo?: number; onTapSelected: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { if (ref.current && scrollTo !== undefined) ref.current.scrollTop = scrollTo * ITEM; }, [scrollTo]);
@@ -29,10 +32,15 @@ function Wheel({ label, count, value, onChange, scrollTo }: {
         aria-valuenow={value}
         aria-valuemin={0}
         aria-valuemax={count - 1}
+        onKeyDown={(e) => e.key === "Enter" && onTapSelected()}
         onScroll={(e) => onChange(Math.max(0, Math.min(count - 1, Math.round(e.currentTarget.scrollTop / ITEM))))}
       >
         {Array.from({ length: count }, (_, i) => (
-          <div key={i} className={`item num${i === value ? " on" : ""}`}>{i}</div>
+          <div
+            key={i}
+            className={`item num${i === value ? " on" : ""}`}
+            onClick={() => (i === value ? onTapSelected() : ref.current?.scrollTo({ top: i * ITEM, behavior: "smooth" }))}
+          >{i}</div>
         ))}
       </div>
       <span className="unit">{label}</span>
@@ -40,8 +48,35 @@ function Wheel({ label, count, value, onChange, scrollTo }: {
   );
 }
 
-export default function TimerView({ initialActive, initialNow, initialTags }: {
-  initialActive: Session | null; initialNow: number; initialTags: Tag[];
+
+/** Countdown ring: remaining time empties clockwise from 12 o'clock; each pause leaves a cyan tick. */
+function Ring({ session, t }: { session: Session; t: number }) {
+  const planned = session.plannedMs ?? 1;
+  const left = Math.min(1, remainingMs(session, t) / planned);
+  const colour = session.tag?.color ?? "var(--accent)";
+  return (
+    <svg className="ring" viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r="46" fill="none" stroke="var(--raised)" strokeWidth="3" />
+      <circle
+        cx="50" cy="50" r="46" fill="none" stroke={colour} strokeWidth="3" strokeLinecap="butt"
+        pathLength={100} strokeDasharray={`${left * 100} 100`}
+        transform={`rotate(${-90 + (1 - left) * 360} 50 50)`}
+      />
+      {session.pauses.map((p, i) => {
+        const a = ((elapsedAt(session, p.at) / planned) * 360 - 90) * (Math.PI / 180);
+        const [c, n] = [Math.cos(a), Math.sin(a)];
+        return (
+          <line key={i} x1={50 + 42 * c} y1={50 + 42 * n} x2={50 + 51 * c} y2={50 + 51 * n} stroke="var(--pause)" strokeWidth="3">
+            <title>{`Paused ${formatDur((p.resumedAt ?? t) - p.at)}`}</title>
+          </line>
+        );
+      })}
+    </svg>
+  );
+}
+
+export default function TimerView({ initialActive, initialNow, initialTags, initialSettings }: {
+  initialActive: Session | null; initialNow: number; initialTags: Tag[]; initialSettings: Settings;
 }) {
   const [active, setActive] = useState(initialActive);
   const [tags, setTags] = useState(initialTags);
@@ -58,6 +93,16 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
   const [t, setT] = useState(initialNow); // server-clock "now", advanced by the tick
   const [offset, setOffset] = useState(0); // server clock minus local clock (set on first sync)
   const finishing = useRef(false);
+  const [settings, setSettings] = useState(initialSettings);
+  const [typing, setTyping] = useState<string | null>(null); // text while the user types a duration
+  const [typeError, setTypeError] = useState(false);
+
+  async function updateSettings(patch: Partial<Settings>) {
+    const prev = settings;
+    setSettings({ ...prev, ...patch });
+    const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
+    if (!r.ok) setSettings(prev);
+  }
 
   const now = () => Date.now() + offset;
   const sync = useCallback((j: { now: number; active: Session | null }, t0: number) => {
@@ -82,6 +127,8 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
       const t0 = Date.now();
       const r = await fetch("/api/active", { cache: "no-store" });
       if (r.ok) sync(await r.json(), t0);
+      const s = await fetch("/api/settings", { cache: "no-store" });
+      if (s.ok) setSettings(await s.json());
     };
     load();
     navigator.serviceWorker?.register("/sw.js");
@@ -107,9 +154,11 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
     if (!active) finishing.current = false;
     if (expired && !finishing.current) {
       finishing.current = true;
+      if (settings.sounds) doubleBeep();
       setSaved(`Done · ${fmt(active!.plannedMs!, "floor")}${active!.tag ? ` · ${active!.tag.name}` : ""}`);
       send({ action: "stop" });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expired, active, send]);
 
   // Live notification mirrors the session; its Pause/Resume button is handled in public/sw.js.
@@ -153,6 +202,17 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
   }
   const onMins = (m: number) => setMins(hours === 3 ? 0 : m);
 
+  function commitTyped() {
+    const total = parseDuration(typing ?? "");
+    if (total === null) return setTypeError(true);
+    setHours(Math.floor(total / 60));
+    setMins(total % 60);
+    setReset({ h: Math.floor(total / 60), m: total % 60 });
+    setTyping(null);
+    setTypeError(false);
+  }
+  const startTyping = () => { setTyping(`${hours}:${String(mins).padStart(2, "0")}`); setTypeError(false); };
+
   async function addTag() {
     const r = await fetch("/api/tags", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: newName, color: newColor }) });
     if (!r.ok) return;
@@ -165,6 +225,8 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
 
   const start = () => {
     setSaved("");
+    unlock(); // allow bleeps later, this is inside the click
+    if (settings.sounds) beep();
     if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
     send({ action: "start", mode, tagId, plannedMs: mode === "countdown" ? plannedMs : undefined });
   };
@@ -174,6 +236,7 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
   };
 
   const paused = !!active && isPaused(active);
+  const ring = settings.ring && active?.mode === "countdown";
   const canStart = mode === "stopwatch" || plannedMs > 0;
   const activeTag = active ? active.tag : tags.find((x) => x.id === tagId) ?? null;
 
@@ -190,15 +253,38 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
 
       <div className="stage">
         {!active && mode === "countdown" ? (
-          <div className="wheel">
-            <Wheel label="hours" count={4} value={hours} onChange={onHours} scrollTo={reset.h} />
-            <Wheel label="min" count={60} value={mins} onChange={onMins} scrollTo={reset.m} />
-          </div>
+          typing !== null ? (
+            <form className="typebox" onSubmit={(e) => { e.preventDefault(); commitTyped(); }}>
+              <input
+                className="typeinput num"
+                value={typing}
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => { setTyping(e.target.value); setTypeError(false); }}
+                onKeyDown={(e) => e.key === "Escape" && setTyping(null)}
+                aria-label="Timer length"
+                aria-invalid={typeError}
+                autoComplete="off"
+                inputMode="text"
+              />
+              <p className={typeError ? "error" : "muted"} style={{ margin: 0, fontSize: 14 }}>
+                {typeError ? "Try 25, 1:30 or 45m (up to 3h)" : "Enter minutes or h:mm, then Return"}
+              </p>
+            </form>
+          ) : (
+            <div className="wheel">
+              <Wheel label="hours" count={4} value={hours} onChange={onHours} scrollTo={reset.h} onTapSelected={startTyping} />
+              <Wheel label="min" count={60} value={mins} onChange={onMins} scrollTo={reset.m} onTapSelected={startTyping} />
+            </div>
+          )
         ) : (
-          <div className={`readout num${paused ? " paused" : ""}`} role="timer" aria-live="off">{readout}</div>
+          <div className={`ringbox${ring ? " has-ring" : ""}`}>
+            {ring && <Ring session={active!} t={t} />}
+            <div className={`readout num${paused ? " paused" : ""}`} role="timer" aria-live="off">{readout}</div>
+          </div>
         )}
         <p className="status muted" aria-live="polite">
-          {paused ? "Paused" : active ? (active.mode === "countdown" ? "Remaining" : "Elapsed") : saved || " "}
+          {paused ? "Paused" : active ? (active.mode === "countdown" ? "Remaining" : "Elapsed") : saved || " "}
         </p>
       </div>
 
@@ -244,7 +330,9 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
         )}
       </div>
     </section>
+    <WidgetRow settings={settings} now={t} active={active} />
     <Guide />
+    <WidgetSheet settings={settings} onChange={(widgets) => updateSettings({ widgets })} />
     </>
   );
 }

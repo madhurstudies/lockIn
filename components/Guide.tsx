@@ -1,5 +1,5 @@
 "use client";
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 function steps(ua: string): string[] {
   const ios = /iPhone|iPad|iPod/.test(ua);
@@ -28,14 +28,35 @@ function steps(ua: string): string[] {
   ];
 }
 
+/** Bottom-left (i) button; the panel grows out of it toward the top right. */
 export default function Guide() {
   const ua = useSyncExternalStore(() => () => {}, () => navigator.userAgent, () => "");
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const out = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("keydown", key);
+    document.addEventListener("pointerdown", out);
+    return () => { document.removeEventListener("keydown", key); document.removeEventListener("pointerdown", out); };
+  }, [open]);
+
   if (!ua) return null;
-  const list = steps(ua);
   return (
-    <details className="guide">
-      <summary>Keep the countdown running in the background</summary>
-      <ol>{list.map((s) => <li key={s}>{s}</li>)}</ol>
-    </details>
+    <div className="dock left" ref={box}>
+      {open && (
+        <div className="popover" id="guide-panel" role="dialog" aria-label="Keep the countdown running in the background">
+          <h2>Keep the countdown running</h2>
+          <ol>{steps(ua).map((s) => <li key={s}>{s}</li>)}</ol>
+        </div>
+      )}
+      <button className="fab" aria-expanded={open} aria-controls="guide-panel" aria-label="Background setup instructions" onClick={() => setOpen((o) => !o)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" />
+        </svg>
+      </button>
+    </div>
   );
 }
