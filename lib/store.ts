@@ -72,3 +72,11 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
   await set("settings", next);
   return next;
 }
+
+export async function deleteSession(id: string): Promise<boolean> {
+  const all = await getSessions();
+  const rest = all.filter((s) => s.id !== id);
+  if (rest.length === all.length) return false;
+  await set("sessions", rest);
+  return true;
+}

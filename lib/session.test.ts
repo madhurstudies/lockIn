@@ -28,3 +28,9 @@ assert.equal(focusIn({ ...base, startedAt: 0, endedAt: 30_000 }, 0, 30_000), 20_
 const cases: [string, number | null][] = [["25", 25], ["90", 90], ["1:30", 90], ["2h", 120], ["45m", 45], ["1h30m", 90], ["1h 30", 90], ["4h", 180], ["500", 180], ["0", null], ["abc", null], ["", null], ["1:75", 135]];
 for (const [i, want] of cases) assert.equal(parseDuration(i), want, i);
 console.log("session math 2 ok");
+
+import { bucketize } from "./analysis.ts";
+const ov = { id: "n", mode: "stopwatch" as const, tag: null, pauses: [], startedAt: 23 * H, endedAt: 25 * H };
+const bk = bucketize([ov], [0, 24 * H, 48 * H], 99 * H);
+assert.deepEqual(bk.get("none")!.values, [H, H]); // overnight splits at midnight, no double count
+console.log("analysis ok");

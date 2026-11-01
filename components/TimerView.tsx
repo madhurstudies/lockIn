@@ -242,6 +242,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
 
   return (
     <>
+    <h1 className="sr-only">Timer</h1>
     <section className="card" aria-label="Timer">
       <div className="seg" role="group" aria-label="Mode">
         {(["stopwatch", "countdown"] as const).map((m) => (
