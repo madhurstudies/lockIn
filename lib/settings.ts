@@ -1,4 +1,4 @@
-export const WIDGET_IDS = ["focus-today"] as const;
+export const WIDGET_IDS = ["focus-today", "helper"] as const;
 export type WidgetId = (typeof WIDGET_IDS)[number];
 
 export type Settings = {

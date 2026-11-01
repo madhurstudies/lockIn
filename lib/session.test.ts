@@ -34,3 +34,37 @@ const ov = { id: "n", mode: "stopwatch" as const, tag: null, pauses: [], started
 const bk = bucketize([ov], [0, 24 * H, 48 * H], 99 * H);
 assert.deepEqual(bk.get("none")!.values, [H, H]); // overnight splits at midnight, no double count
 console.log("analysis ok");
+
+import { learn, plan } from "./planner.ts";
+const M = 60_000, day0 = new Date(2026, 0, 5).getTime(); // a local midnight
+const end = day0 + 23 * H + 59 * M;
+const flat = { lengthMs: 45 * M, breakMs: 10 * M, weights: Array(24).fill(1), learned: false };
+assert.equal(plan(0, day0 + 9 * H, end, flat).status, "met");
+// 2h left at 09:00 with 45m habit: 3 x 40m, sooner first when every hour is equal, breaks respected
+const p = plan(2 * H, day0 + 9 * H, end, flat);
+assert.equal(p.status, "plan");
+if (p.status !== "met") {
+  assert.deepEqual(p.blocks.map((b) => b.ms), [40 * M, 40 * M, 40 * M]);
+  assert.equal(p.blocks[0].start, day0 + 9 * H);
+  for (let i = 1; i < p.blocks.length; i++) assert.ok(p.blocks[i].start >= p.blocks[i - 1].start + p.blocks[i - 1].ms + 10 * M);
+}
+// favoured evening hours pull the blocks there
+const evening = { ...flat, weights: Array.from({ length: 24 }, (_, h) => (h >= 19 && h <= 21 ? 1 : 0.25)) };
+const pe = plan(90 * M, day0 + 9 * H, end, evening);
+if (pe.status !== "met") assert.ok(pe.blocks.every((b) => new Date(b.start).getHours() >= 19), "evening");
+// 2h left at 22:00: fits only with 5m breaks
+assert.equal(plan(110 * M, day0 + 22 * H, end, flat).status, "tight");
+// 3h left at 22:30: can't fit, plans what's possible, nothing past 23:59
+const ps = plan(3 * H, day0 + 22 * H + 30 * M, end, flat);
+assert.equal(ps.status, "short");
+if (ps.status !== "met") {
+  assert.ok(ps.plannedMs < 3 * H && ps.plannedMs >= 60 * M);
+  assert.ok(ps.blocks.every((b) => b.start + b.ms <= end));
+}
+// learning: median session length and the hours used
+const hist = [9, 10, 20].map((h, i) => ({ id: `h${i}`, mode: "stopwatch" as const, tag: null, pauses: [], startedAt: day0 - 86_400_000 + h * H, endedAt: day0 - 86_400_000 + h * H + 30 * M }));
+const hb = learn(hist, day0);
+assert.equal(hb.lengthMs, 30 * M);
+assert.equal(hb.breakMs, 5 * M);
+assert.ok(hb.weights[9] === 1 && hb.weights[3] === 0.25 && hb.learned);
+console.log("planner ok");

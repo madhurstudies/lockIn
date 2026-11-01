@@ -31,11 +31,12 @@ function fmt(ms: number, round: "floor" | "ceil") {
   return h ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
 }
 
-function Wheel({ label, count, value, onChange, scrollTo, onTapSelected }: {
-  label: string; count: number; value: number; onChange: (n: number) => void; scrollTo?: number; onTapSelected: () => void;
+/** Scrolls to `value` on mount and whenever `jump` changes (a value set from outside the wheel). */
+function Wheel({ label, count, value, onChange, jump, onTapSelected }: {
+  label: string; count: number; value: number; onChange: (n: number) => void; jump: number; onTapSelected: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (ref.current && scrollTo !== undefined) ref.current.scrollTop = scrollTo * ITEM; }, [scrollTo]);
+  useEffect(() => { if (ref.current) ref.current.scrollTop = value * ITEM; }, [jump]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="colwrap">
       <div
@@ -98,7 +99,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const [mode, setMode] = useState<Mode>(initialActive?.mode ?? "countdown");
   const [hours, setHours] = useState(0);
   const [mins, setMins] = useState(25);
-  const [reset, setReset] = useState<{ h: number; m: number }>({ h: 0, m: 25 }); // programmatic wheel position
+  const [jump, setJump] = useState({ h: 0, m: 0 }); // bump after setting hours/mins from code so that wheel follows
   const [tagId, setTagId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -164,9 +165,9 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   }, [sync]);
 
   const running = active && !isPaused(active);
+  // Fast tick for the readout while running; a slow one otherwise so widgets (the helper's plan) stay current.
   useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => setT(Date.now() + offset), 250);
+    const id = setInterval(() => setT(Date.now() + offset), running ? 250 : 30_000);
     return () => clearInterval(id);
   }, [running, offset]);
 
@@ -238,18 +239,32 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
 
   function onHours(h: number) {
     setHours(h);
-    if (h === MAX_PLANNED_MS / 3_600_000 && mins > 0) { setMins(0); setReset((r) => ({ ...r, m: 0 })); }
+    if (h === MAX_PLANNED_MS / 3_600_000 && mins > 0) { setMins(0); setJump((j) => ({ ...j, m: j.m + 1 })); }
   }
   const onMins = (m: number) => setMins(hours === 3 ? 0 : m);
+
+  /** Put a length (whole minutes, 1..180) on the countdown wheels. */
+  function setLength(total: number) {
+    setHours(Math.floor(total / 60));
+    setMins(total % 60);
+    setJump((j) => ({ h: j.h + 1, m: j.m + 1 }));
+  }
 
   function commitTyped() {
     const total = parseDuration(typing ?? "");
     if (total === null) return setTypeError(true);
-    setHours(Math.floor(total / 60));
-    setMins(total % 60);
-    setReset({ h: Math.floor(total / 60), m: total % 60 });
+    setLength(total);
     setTyping(null);
     setTypeError(false);
+  }
+
+  /** Lock In helper's "Set": load its next block into the countdown. */
+  function loadPlan(ms: number) {
+    setMode("countdown");
+    setTyping(null);
+    setSaved("");
+    setLength(Math.min(MAX_PLANNED_MS, ms) / 60_000);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
   const startTyping = () => { setTyping(`${hours}:${String(mins).padStart(2, "0")}`); setTypeError(false); };
 
@@ -319,8 +334,8 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
             </form>
           ) : (
             <div className="wheel">
-              <Wheel label="hours" count={4} value={hours} onChange={onHours} scrollTo={reset.h} onTapSelected={startTyping} />
-              <Wheel label="min" count={60} value={mins} onChange={onMins} scrollTo={reset.m} onTapSelected={startTyping} />
+              <Wheel label="hours" count={4} value={hours} onChange={onHours} jump={jump.h} onTapSelected={startTyping} />
+              <Wheel label="min" count={60} value={mins} onChange={onMins} jump={jump.m} onTapSelected={startTyping} />
             </div>
           )
         ) : (
@@ -376,7 +391,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
         )}
       </div>
     </section>
-    <WidgetRow settings={settings} now={t} active={active} />
+    <WidgetRow settings={settings} now={t} active={active} onUse={loadPlan} />
     <Guide />
     <WidgetSheet settings={settings} onChange={(widgets) => updateSettings({ widgets })} />
     </>

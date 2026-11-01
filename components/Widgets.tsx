@@ -1,11 +1,14 @@
 "use client";
-import { useEffect, useState } from "react";
-import { focusIn, formatDur, formatShort, type Session } from "@/lib/session";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { learn, plan } from "@/lib/planner";
+import { focusIn, formatDur, formatShort, remainingMs, type Session } from "@/lib/session";
 import type { Settings, WidgetId } from "@/lib/settings";
 
 const PRESETS: { id: WidgetId; name: string; about: string }[] = [
   { id: "focus-today", name: "Focus today", about: "Focused time since midnight, against your daily target when one is set." },
+  { id: "helper", name: "Lock In helper", about: "Plans the sessions left to hit today's target before midnight, from your own focus habits." },
 ];
+const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 const DAY = 86_400_000;
 const HISTORY_DAYS = 28; // what the helper learns from
@@ -47,17 +50,72 @@ function FocusToday({ doneMs, targetMs }: { doneMs: number; targetMs: number | n
   );
 }
 
-export function WidgetRow({ settings, now, active }: { settings: Settings; now: number; active: Session | null }) {
+/** Next sessions to reach the target by 23:59, laid out by lib/planner from the last four weeks. */
+function Helper({ history, active, now, today, doneMs, targetMs, onUse }: {
+  history: Session[]; active: Session | null; now: number; today: number; doneMs: number; targetMs: number | null; onUse: (ms: number) => void;
+}) {
+  const habits = useMemo(() => learn(history, today), [history, today]);
+  if (targetMs === null)
+    return <Box><p className="hmsg">Set a daily target in Settings and this will plan the rest of your day.</p></Box>;
+
+  // A running countdown is already booked: count what it has left and plan from its end.
+  let left = targetMs - doneMs, from = now;
+  if (active?.mode === "countdown") { const r = remainingMs(active, now); left -= r; from = now + r + habits.breakMs; }
+  else if (active) from = now + habits.breakMs; // stopwatch: after you stop
+  const p = plan(left, from, new Date(today).setHours(23, 59, 0, 0), habits);
+
+  if (p.status === "met")
+    return <Box><p className="hmsg">{doneMs >= targetMs ? "Target reached. Anything more is a bonus." : "This session takes you to your target."}</p></Box>;
+  if (!p.blocks.length)
+    return <Box><p className="hmsg">Not enough of today left for another session. Fresh target at midnight.</p></Box>;
+
+  const last = p.blocks[p.blocks.length - 1];
+  const note = p.status === "plan" ? `Done by ${clock(last.start + last.ms)}`
+    : p.status === "tight" ? "Tight: 5m breaks to make midnight"
+    : `${formatShort(p.plannedMs)} of ${formatShort(p.leftMs)} still fits today`;
+  return (
+    <Box>
+      <div className="stitle">{p.blocks.length} session{p.blocks.length > 1 ? "s" : ""} · {formatShort(p.plannedMs)}</div>
+      <div className="muted wcap">{active ? "After this session. " : ""}{note}</div>
+      <ol className="hplan">
+        {p.blocks.slice(0, 4).map((b, i) => (
+          <li key={b.start}>
+            <span className="num">{b.start - now < 5 * 60_000 ? "Now" : clock(b.start)}</span>
+            <span className="num muted">{formatShort(b.ms)}</span>
+            {i === 0 && !active && <button className="pill" onClick={() => onUse(b.ms)} aria-label={`Set timer to ${formatShort(b.ms)}`}>Set</button>}
+          </li>
+        ))}
+      </ol>
+      {p.blocks.length > 4 && <div className="muted wcap">+{p.blocks.length - 4} more</div>}
+      <div className="muted hfoot">
+        {habits.learned
+          ? `From your last 4 weeks: ${formatShort(habits.lengthMs)} sessions, ${formatShort(habits.breakMs)} breaks, your usual hours.`
+          : `${formatShort(habits.lengthMs)} sessions for now; it learns your rhythm as you log more.`}
+      </div>
+    </Box>
+  );
+}
+
+function Box({ children }: { children: React.ReactNode }) {
+  return <div className="widget"><div className="muted">Lock In helper</div>{children}</div>;
+}
+
+export function WidgetRow({ settings, now, active, onUse }: { settings: Settings; now: number; active: Session | null; onUse: (ms: number) => void }) {
   const today = new Date(now).setHours(0, 0, 0, 0); // overnight sessions split at midnight, as in Analysis
   const history = useHistory(today, active?.id, settings.widgets.length > 0);
-  if (!settings.widgets.length) return null;
+  // Days and clock times depend on the browser's timezone, not the server's, so widgets render client-side only.
+  const client = useSyncExternalStore(() => () => {}, () => true, () => false);
+  if (!settings.widgets.length || !client) return null;
 
   const all = [...history.filter((s) => s.id !== active?.id), ...(active ? [active] : [])];
   const doneMs = all.reduce((sum, s) => sum + focusIn(s, today, now, now), 0);
   const targetMs = settings.target ? settings.targetMins * 60_000 : null;
   return (
     <div className="widgets" aria-label="Widgets">
-      {settings.widgets.includes("focus-today") && <FocusToday doneMs={doneMs} targetMs={targetMs} />}
+      {settings.widgets.map((w) =>
+        w === "focus-today" ? <FocusToday key={w} doneMs={doneMs} targetMs={targetMs} />
+        : <Helper key={w} history={history} active={active} now={now} today={today} doneMs={doneMs} targetMs={targetMs} onUse={onUse} />,
+      )}
     </div>
   );
 }
