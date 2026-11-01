@@ -22,8 +22,8 @@ export const viewport: Viewport = {
   ],
 };
 
-// Runs before paint so the saved theme never flashes.
-const themeScript = `try{var t=localStorage.getItem("theme");if(t)document.documentElement.dataset.theme=t}catch(e){}`;
+// Runs before paint so saved device preferences (lib/device.ts) never flash.
+const themeScript = `try{var d=document.documentElement.dataset;["theme","touch","motion"].forEach(function(k){var v=localStorage.getItem(k);if(v)d[k]=v})}catch(e){}`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

@@ -74,8 +74,10 @@ export async function addTag(name: unknown, color: unknown): Promise<Tag> {
   return tag;
 }
 
+/** Saved settings over the defaults; keys no longer in Settings (e.g. the old dayStartHour) are dropped. */
 export async function getSettings(): Promise<Settings> {
-  return { ...DEFAULTS, ...((await get<Partial<Settings>>("settings")) ?? {}) };
+  const saved = (await get<Partial<Settings>>("settings")) ?? {};
+  return Object.fromEntries(Object.entries(DEFAULTS).map(([k, v]) => [k, saved[k as keyof Settings] ?? v])) as Settings;
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {

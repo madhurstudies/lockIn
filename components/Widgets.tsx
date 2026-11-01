@@ -3,22 +3,13 @@ import { useEffect, useState } from "react";
 import { focusIn, formatDur, type Session } from "@/lib/session";
 import type { Settings, WidgetId } from "@/lib/settings";
 
-const DAY = 86_400_000;
 const PRESETS: { id: WidgetId; name: string; about: string }[] = [
-  { id: "focus-today", name: "Focus today", about: "Total focused time since your day starts." },
+  { id: "focus-today", name: "Focus today", about: "Total focused time since midnight." },
 ];
-const hourLabel = (h: number) => `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
 
-/** Start of the current "day" given the user's reset hour. */
-function dayStart(now: number, hour: number) {
-  const d = new Date(now);
-  d.setHours(hour, 0, 0, 0);
-  return d.getTime() > now ? d.getTime() - DAY : d.getTime();
-}
-
-function FocusToday({ now, hour, active }: { now: number; hour: number; active: Session | null }) {
+function FocusToday({ now, active }: { now: number; active: Session | null }) {
   const [done, setDone] = useState<Session[]>([]);
-  const from = dayStart(now, hour);
+  const from = new Date(now).setHours(0, 0, 0, 0); // overnight sessions split at midnight, as in Analysis
 
   useEffect(() => {
     let live = true;
@@ -40,7 +31,7 @@ function FocusToday({ now, hour, active }: { now: number; hour: number; active: 
     <div className="widget">
       <div className="muted">Focus today</div>
       <div className="wvalue num">{formatDur(total)}</div>
-      <div className="muted wcap">since {hour === 0 ? "midnight" : hourLabel(hour)}</div>
+      <div className="muted wcap">since midnight</div>
     </div>
   );
 }
@@ -49,7 +40,7 @@ export function WidgetRow({ settings, now, active }: { settings: Settings; now: 
   if (!settings.widgets.length) return null;
   return (
     <div className="widgets" aria-label="Widgets">
-      {settings.widgets.includes("focus-today") && <FocusToday now={now} hour={settings.dayStartHour} active={active} />}
+      {settings.widgets.includes("focus-today") && <FocusToday now={now} active={active} />}
     </div>
   );
 }

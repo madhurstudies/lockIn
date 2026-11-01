@@ -4,6 +4,7 @@ import Guide from "./Guide";
 import { WidgetRow, WidgetSheet } from "./Widgets";
 import { elapsedAt, elapsedMs, formatDur, isPaused, MAX_PLANNED_MS, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
 import type { Settings } from "@/lib/settings";
+import { haptic, usePref } from "@/lib/device";
 import { beep, doubleBeep, unlock } from "@/lib/sound";
 
 const SWATCHES = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#30b0c7", "#0a84ff", "#ff2d55", "#8e8e93"];
@@ -110,6 +111,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const [settings, setSettings] = useState(initialSettings);
   const [typing, setTyping] = useState<string | null>(null); // text while the user types a duration
   const [typeError, setTypeError] = useState(false);
+  const touch = usePref("touch");
 
   async function updateSettings(patch: Partial<Settings>) {
     const prev = settings;
@@ -175,6 +177,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     if (expired && !finishing.current) {
       finishing.current = true;
       if (settings.sounds) doubleBeep();
+      haptic([200, 100, 200]);
       setSaved(`Done · ${fmt(active!.plannedMs!, "floor")}${active!.tag ? ` · ${active!.tag.name}` : ""}`);
       send({ action: "stop" });
     }
@@ -208,6 +211,20 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
       } as NotificationOptions));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expired]);
+
+  // Touch mode: keep the screen on while a session is open. The lock drops whenever the page hides, so re-take it on return.
+  useEffect(() => {
+    if (touch !== "on" || !active || !("wakeLock" in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    let live = true;
+    const take = () => {
+      if (document.visibilityState !== "visible") return;
+      navigator.wakeLock.request("screen").then((l) => { if (live) lock = l; else void l.release(); }).catch(() => {});
+    };
+    take();
+    document.addEventListener("visibilitychange", take);
+    return () => { live = false; document.removeEventListener("visibilitychange", take); void lock?.release(); };
+  }, [touch, active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const plannedMs = (hours * 60 + mins) * 60_000;
   const shownMs = active
@@ -250,6 +267,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     setSaved("");
     unlock(); // allow bleeps later, this is inside the click
     if (settings.sounds) beep();
+    haptic();
     if ("Notification" in window) {
       if (Notification.permission === "default") Notification.requestPermission().then((p) => { if (p === "granted") void subscribePush(); });
       else if (Notification.permission === "granted") subscribePush();
@@ -257,6 +275,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     send({ action: "start", mode, tagId, plannedMs: mode === "countdown" ? plannedMs : undefined });
   };
   const stop = () => {
+    haptic();
     if (active) setSaved(`Saved · ${fmt(elapsedMs(active, now()), "floor")}${active.tag ? ` · ${active.tag.name}` : ""}`);
     send({ action: "stop" });
   };
@@ -351,9 +370,9 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
         {!active ? (
           <button className="circle go" onClick={start} disabled={!canStart || busy}>Start</button>
         ) : paused ? (
-          <button className="circle go" onClick={() => send({ action: "resume" })} disabled={busy}>Resume</button>
+          <button className="circle go" onClick={() => { haptic(); send({ action: "resume" }); }} disabled={busy}>Resume</button>
         ) : (
-          <button className="circle go" onClick={() => send({ action: "pause" })} disabled={busy}>Pause</button>
+          <button className="circle go" onClick={() => { haptic(); send({ action: "pause" }); }} disabled={busy}>Pause</button>
         )}
       </div>
     </section>
