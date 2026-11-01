@@ -11,5 +11,5 @@ export function proxy(req: NextRequest) {
 
 // Static assets and PWA files stay public; everything else is gated.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|manifest.webmanifest|sw.js|icon|apple-icon|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|manifest.webmanifest|sw.js|icons/|favicon.ico).*)"],
 };

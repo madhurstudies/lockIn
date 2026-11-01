@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Guide from "./Guide";
 import { elapsedMs, isPaused, MAX_PLANNED_MS, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
 
 const SWATCHES = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#30b0c7", "#0a84ff", "#ff2d55", "#8e8e93"];
@@ -54,13 +55,15 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
   const [newColor, setNewColor] = useState(SWATCHES[5]);
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
-  const [, tick] = useState(0);
-  const offset = useRef(initialNow - Date.now()); // server clock minus local clock
+  const [t, setT] = useState(initialNow); // server-clock "now", advanced by the tick
+  const [offset, setOffset] = useState(0); // server clock minus local clock (set on first sync)
   const finishing = useRef(false);
 
-  const now = () => Date.now() + offset.current;
+  const now = () => Date.now() + offset;
   const sync = useCallback((j: { now: number; active: Session | null }, t0: number) => {
-    offset.current = j.now - (t0 + Date.now()) / 2; // assume symmetric latency
+    const o = j.now - (t0 + Date.now()) / 2; // assume symmetric latency
+    setOffset(o);
+    setT(Date.now() + o);
     setActive(j.active);
   }, []);
 
@@ -81,20 +84,24 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
       if (r.ok) sync(await r.json(), t0);
     };
     load();
+    navigator.serviceWorker?.register("/sw.js");
     const onVis = () => document.visibilityState === "visible" && load();
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    navigator.serviceWorker?.addEventListener("message", load); // notification button was used
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      navigator.serviceWorker?.removeEventListener("message", load);
+    };
   }, [sync]);
 
   const running = active && !isPaused(active);
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => tick((n) => n + 1), 250);
+    const id = setInterval(() => setT(Date.now() + offset), 250);
     return () => clearInterval(id);
-  }, [running]);
+  }, [running, offset]);
 
   // Countdown reached zero: the server closes it at its true end time.
-  const t = now();
   const expired = active?.mode === "countdown" && running && remainingMs(active, t) <= 0;
   useEffect(() => {
     if (!active) finishing.current = false;
@@ -104,6 +111,31 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
       send({ action: "stop" });
     }
   }, [expired, active, send]);
+
+  // Live notification mirrors the session; its Pause/Resume button is handled in public/sw.js.
+  const pausedKey = active ? isPaused(active) : null;
+  useEffect(() => {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    navigator.serviceWorker?.ready.then((reg) => {
+      if (!active) return reg.getNotifications({ tag: "lockin" }).then((n) => n.forEach((x) => x.close()));
+      const label = active.tag?.name ?? (active.mode === "countdown" ? "Timer" : "Stopwatch");
+      const p = pausedKey!;
+      return reg.showNotification(`${label} · ${p ? "Paused" : "Running"}`, {
+        tag: "lockin", icon: "/icons/icon-192.png", silent: true,
+        body: p ? "Tap Resume to continue" : "Tap Pause to take a break",
+        actions: [{ action: p ? "resume" : "pause", title: p ? "Resume" : "Pause" }],
+      } as NotificationOptions);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id, pausedKey]);
+
+  // ponytail: best-effort end alert; the OS may freeze a hidden page. Upgrade path: delayed Web Push (e.g. QStash).
+  useEffect(() => {
+    if (!expired || !("Notification" in window) || Notification.permission !== "granted") return;
+    navigator.serviceWorker?.ready.then((reg) =>
+      reg.showNotification("Time's up", { tag: "lockin-done", icon: "/icons/icon-192.png", body: saved || "Session complete" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expired]);
 
   const plannedMs = (hours * 60 + mins) * 60_000;
   const shownMs = active
@@ -133,6 +165,7 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
 
   const start = () => {
     setSaved("");
+    if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
     send({ action: "start", mode, tagId, plannedMs: mode === "countdown" ? plannedMs : undefined });
   };
   const stop = () => {
@@ -145,6 +178,7 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
   const activeTag = active ? active.tag : tags.find((x) => x.id === tagId) ?? null;
 
   return (
+    <>
     <section className="card" aria-label="Timer">
       <div className="seg" role="group" aria-label="Mode">
         {(["stopwatch", "countdown"] as const).map((m) => (
@@ -210,5 +244,7 @@ export default function TimerView({ initialActive, initialNow, initialTags }: {
         )}
       </div>
     </section>
+    <Guide />
+    </>
   );
 }
