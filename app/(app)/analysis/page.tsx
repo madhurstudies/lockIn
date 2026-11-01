@@ -1,1 +1,5 @@
-export default function Analysis() { return <p className="muted">Analysis</p>; }
+import AnalysisView from "@/components/AnalysisView";
+
+export default function Analysis() {
+  return <AnalysisView />;
+}

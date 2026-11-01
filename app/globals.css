@@ -147,3 +147,31 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 .guide { max-width: 440px; margin: 16px auto 0; padding: 0 8px; color: var(--muted); font-size: 14px; }
 .guide summary { cursor: pointer; padding: 8px 0; }
 .guide ol { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+
+/* analysis */
+.analysis { max-width: 640px; margin: 24px auto 0; display: grid; gap: 16px; }
+.analysis .seg { background: var(--surface); }
+.analysis .seg button[aria-pressed="true"] { background: var(--raised); }
+.totals { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border-radius: var(--radius-card); }
+.totals > div { padding: 16px 20px; }
+.totals > div + div { border-left: 1px solid var(--rule); }
+.totals dt { font-size: 13px; }
+.totals dd { margin: 2px 0 0; font-size: 28px; font-weight: 500; letter-spacing: -0.01em; }
+.panel { background: var(--surface); border-radius: var(--radius-card); padding: 16px 20px 20px; }
+.panel h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+.empty { background: var(--surface); border-radius: var(--radius-card); padding: 32px 20px; margin: 0; text-align: center; }
+.name { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
+.name i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.bars li { display: grid; grid-template-columns: minmax(80px, 28%) 1fr auto; gap: 12px; align-items: center; }
+.track { height: 10px; border-radius: 5px; background: var(--raised); overflow: hidden; }
+.track b { display: block; height: 100%; border-radius: 5px; }
+.axis { display: grid; grid-template-columns: 44px 1fr; font-size: 12px; margin-bottom: 4px; }
+.axis div { display: flex; justify-content: space-between; }
+.trow { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 0; margin-bottom: 4px; font-size: 12px; }
+.legend { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; font-size: 12px; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.list li + li { border-top: 1px solid var(--rule); }
+.list li:first-child { padding-top: 0; }
+.sub { display: block; font-size: 13px; margin-top: 2px; }
