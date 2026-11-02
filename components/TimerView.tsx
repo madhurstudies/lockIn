@@ -5,7 +5,7 @@ import RingToggle from "./RingToggle";
 import { WidgetRow, WidgetSheet } from "./Widgets";
 import { elapsedAt, elapsedMs, formatDur, isPaused, MAX_PLANNED_MS, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
 import type { Settings } from "@/lib/settings";
-import { haptic, usePref } from "@/lib/device";
+import { haptic, readPref, usePref } from "@/lib/device";
 import { beep, doubleBeep, unlock } from "@/lib/sound";
 
 const SWATCHES = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#30b0c7", "#0a84ff", "#ff2d55", "#8e8e93"];
@@ -66,6 +66,15 @@ function Wheel({ label, count, value, onChange, jump, onTapSelected }: {
 }
 
 
+/** iOS-style press: the timer shrinks a touch, then springs back. Skipped when animations are off. */
+function squish(el: HTMLElement) {
+  if (readPref("motion") === "off" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  el.animate(
+    [{ transform: "scale(1)" }, { transform: "scale(0.93)", offset: 0.35 }, { transform: "scale(1.015)", offset: 0.7 }, { transform: "scale(1)" }],
+    { duration: 360, easing: "cubic-bezier(0.22, 0.8, 0.24, 1)" },
+  );
+}
+
 /** Countdown ring: remaining time empties clockwise from 12 o'clock; each pause leaves a cyan tick. */
 function Ring({ session, t }: { session: Session; t: number }) {
   const planned = session.plannedMs ?? 1;
@@ -117,6 +126,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const ringPref = usePref("ring");
   const [zen, setZen] = useState(false); // zen mode: only the timer, filling the browser window
   const [peek, setPeek] = useState(false); // zen: the way back is showing
+  const [tagMenu, setTagMenu] = useState(false); // zen: the tag picker is open
 
   async function updateSettings(patch: Partial<Settings>) {
     const prev = settings;
@@ -313,12 +323,12 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     const key = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest("input, textarea")) return;
-      if (e.key === "Escape") { setZen(false); setPeek(false); }
+      if (e.key === "Escape") { if (tagMenu) setTagMenu(false); else { setZen(false); setPeek(false); } }
       else if (e.key === " " && active && !el.closest("button")) { e.preventDefault(); haptic(); void send({ action: paused ? "resume" : "pause" }); }
     };
     document.addEventListener("keydown", key);
     return () => { html.style.overflow = prev; document.removeEventListener("keydown", key); };
-  }, [zen, active, paused, send]);
+  }, [zen, active, paused, tagMenu, send]);
 
   /** Right click anywhere in zen mode (not in a text field): spells out the way back. */
   function zenMenu(e: React.MouseEvent) {
@@ -329,6 +339,11 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const ring = ringPref === "on" && active?.mode === "countdown";
   const canStart = mode === "stopwatch" || plannedMs > 0;
   const activeTag = active ? active.tag : tags.find((x) => x.id === tagId) ?? null;
+  const menuOpen = tagMenu && zen && !running;
+  const plain = paused ? "Paused" : active ? (active.mode === "countdown" ? "Remaining" : "Elapsed") : saved || " ";
+  // Zen: the tag's name stands in for "Remaining" / "Elapsed"; other messages (Paused, Saved…) stay beside it.
+  const zenTag = zen && activeTag;
+  const pickTag = (id: string | null) => { setTagMenu(false); haptic(); if (active) void send({ action: "tag", tagId: id }); else setTagId(id); };
 
   return (
     <>
@@ -372,14 +387,36 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
             </div>
           )
         ) : (
-          <div className={`ringbox${ring ? " has-ring" : ""}`} onClick={zen && active ? toggle : undefined}>
+          <div className={`ringbox${ring ? " has-ring" : ""}`} onClick={zen && active ? (e) => { squish(e.currentTarget); toggle(); } : undefined}>
             {ring && <Ring session={active!} t={t} />}
             <div className={`readout num${paused ? " paused" : ""}`} role="timer" aria-live="off">{readout}</div>
           </div>
         )}
-        <p className="status muted" aria-live="polite">
-          {paused ? "Paused" : active ? (active.mode === "countdown" ? "Remaining" : "Elapsed") : saved || " "}
+        <p className={`status muted${zen ? " zenstatus" : ""}`} aria-live="polite">
+          {zenTag && <span className="tagpill" style={{ "--c": zenTag.color } as React.CSSProperties}>{zenTag.name}</span>}
+          {!(zenTag && (plain === "Remaining" || plain === "Elapsed")) && plain}
         </p>
+        {zen && !running && (
+          <div className="zentag">
+            <button className="tagbtn" style={zenTag ? ({ "--tc": zenTag.color } as React.CSSProperties) : undefined} aria-label="Choose tag" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setTagMenu((v) => !v)}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5v6.6c0 .5.2 1 .6 1.4l7.9 7.9a2 2 0 0 0 2.8 0l5.6-5.6a2 2 0 0 0 0-2.8l-7.9-7.9a2 2 0 0 0-1.4-.6H4.5a1 1 0 0 0-1 1z" /><circle cx="8" cy="8.5" r="1.3" /></svg>
+            </button>
+            {menuOpen && (
+              <>
+                <button className="scrim" aria-label="Close tag menu" onClick={() => setTagMenu(false)} />
+                <div className="tagmenu" role="menu" aria-label="Tag">
+                  {tags.length === 0 && <p className="muted">No tags yet. Add one in normal mode.</p>}
+                  {tags.map((x) => (
+                    <button key={x.id} role="menuitemradio" aria-checked={activeTag?.id === x.id} onClick={() => pickTag(x.id)}>
+                      <i style={{ background: x.color }} />{x.name}
+                    </button>
+                  ))}
+                  {tags.length > 0 && <button role="menuitemradio" aria-checked={!activeTag} className="none" onClick={() => pickTag(null)}>No tag</button>}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="tags" role="group" aria-label="Tag">

@@ -9,7 +9,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as Action | null;
-  if (!body || !["start", "pause", "resume", "stop"].includes(body.action))
+  if (!body || !["start", "pause", "resume", "stop", "tag"].includes(body.action))
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   const now = Date.now();
   try {

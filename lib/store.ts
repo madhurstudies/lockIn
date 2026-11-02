@@ -49,7 +49,8 @@ export async function expireIfDue(id: string, now = Date.now()): Promise<Session
 
 export type Action =
   | { action: "start"; mode: Mode; tagId?: string | null; plannedMs?: number }
-  | { action: "pause" | "resume" | "stop" };
+  | { action: "pause" | "resume" | "stop" }
+  | { action: "tag"; tagId: string | null }; // retag a paused session (zen mode)
 
 export async function act(a: Action, now = Date.now()): Promise<Session | null> {
   const s = await getActive(now);
@@ -66,6 +67,7 @@ export async function act(a: Action, now = Date.now()): Promise<Session | null> 
   }
 
   if (!s) return null;
+  if (a.action === "tag" && isPaused(s)) s.tag = a.tagId ? ((await getTags()).find((t) => t.id === a.tagId) ?? null) : null;
   if (a.action === "pause" && !isPaused(s)) s.pauses.push({ at: now });
   if (a.action === "resume") s.pauses = s.pauses.map((p) => (p.resumedAt === undefined ? { ...p, resumedAt: now } : p));
   if (a.action === "stop") return void (await finish(s, now)), null;
