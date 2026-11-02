@@ -3,7 +3,7 @@ import { useState } from "react";
 import { setTheme, useDataset, usePref } from "@/lib/device";
 import { cacheSync, putSettings, setDevicePref, useEffective, writeLocal } from "@/lib/prefs";
 import { formatShort, parseDuration } from "@/lib/session";
-import { MIN_FOCUS_MAX, MIN_FOCUS_MIN, TARGET_MAX, TARGET_STEP, THEMES, type Settings, type SettingsPatch, type SyncKey, type Theme } from "@/lib/settings";
+import { MIN_FOCUS_MAX, MIN_FOCUS_MIN, TARGET_MAX, TARGET_STEP, THEMES, type Local, type Settings, type SettingsPatch, type SyncKey, type Theme } from "@/lib/settings";
 
 /** One row of the table: what it is, how to set it, and whether it is shared across devices. */
 function Row({ title, hint, sync, wide, children }: {
@@ -74,8 +74,7 @@ export default function SettingsView({ initial }: { initial: Settings }) {
   }
 
   /** Shared when the row syncs, otherwise only on this device. */
-  const set = (row: "sounds" | "target" | "minFocus", patch: Partial<Pick<Settings, "sounds" | "target" | "targetMins" | "minFocusMins">>) =>
-    s.sync[row] ? update(patch) : writeLocal(patch);
+  const set = (row: "sounds" | "target" | "minFocus" | "finish" | "finishAlways", patch: Local) => (s.sync[row] ? update(patch) : writeLocal(patch));
   /** ring/touch/motion/theme are applied here at once, and shared too when the row syncs. */
   const setDevice = (k: "ring" | "touch" | "motion", on: boolean) => { setDevicePref(k, on); if (s.sync[k]) setS((x) => ({ ...x, [k]: on })); };
   const pickTheme = (t: Theme) => { setTheme(t); if (s.sync.theme) void update({ theme: t }); };
@@ -84,9 +83,9 @@ export default function SettingsView({ initial }: { initial: Settings }) {
   function toggleSync(k: SyncKey, on: boolean) {
     const now: Record<SyncKey, SettingsPatch> = {
       ring: { ring: ring === "on" }, theme: { theme }, touch: { touch: touch === "on" }, motion: { motion: motion === "on" },
-      sounds: { sounds: eff.sounds }, target: { target: eff.target, targetMins: eff.targetMins }, minFocus: { minFocusMins: eff.minFocusMins },
+      sounds: { sounds: eff.sounds }, finish: { showFinish: eff.showFinish }, finishAlways: { finishAlways: eff.finishAlways }, target: { target: eff.target, targetMins: eff.targetMins }, minFocus: { minFocusMins: eff.minFocusMins },
     };
-    if (!on && (k === "sounds" || k === "target" || k === "minFocus")) writeLocal(now[k] as Parameters<typeof writeLocal>[0]);
+    if (!on && !["ring", "theme", "touch", "motion"].includes(k)) writeLocal(now[k] as Local);
     void update({ sync: { [k]: on }, ...(on ? now[k] : {}) });
   }
   const sync = (k: SyncKey) => ({ on: s.sync[k], set: (on: boolean) => toggleSync(k, on) });
@@ -111,6 +110,14 @@ export default function SettingsView({ initial }: { initial: Settings }) {
         <Row title="Minimum focus time" hint="A session with less focus than this is not recorded. Applies to sessions you start from now on. 5m to 3h." sync={sync("minFocus")} wide>
           <MinFocus value={eff.minFocusMins} onChange={(m) => set("minFocus", { minFocusMins: m })} />
         </Row>
+        <Row title="Show finish time" hint="While you set or pause a countdown, shows the clock time it will finish at (24-hour). While it runs, hover the timer to see it." sync={sync("finish")}>
+          <input type="checkbox" role="switch" className="switch" checked={eff.showFinish} onChange={(e) => set("finish", { showFinish: e.target.checked })} aria-label="Show finish time" />
+        </Row>
+        {eff.showFinish && (
+          <Row title="Show permanently" hint={touch === "on" ? "Always on in touch-friendly mode." : "Keep it showing while the countdown runs, without hovering."} sync={sync("finishAlways")}>
+            <input type="checkbox" role="switch" className="switch" checked={touch === "on" || eff.finishAlways} disabled={touch === "on"} onChange={(e) => set("finishAlways", { finishAlways: e.target.checked })} aria-label="Show finish time permanently" />
+          </Row>
+        )}
         <Row title="Daily target" hint="Focus goal for each day, midnight to midnight. Shows in the Focus today widget and powers the Lock In helper." sync={sync("target")}>
           <input type="checkbox" role="switch" className="switch" checked={eff.target} onChange={(e) => set("target", { target: e.target.checked })} aria-label="Daily target" />
         </Row>

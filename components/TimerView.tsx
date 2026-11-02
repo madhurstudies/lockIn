@@ -1,9 +1,9 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Guide from "./Guide";
 import RingToggle from "./RingToggle";
 import { WidgetRow, WidgetSheet } from "./Widgets";
-import { elapsedAt, elapsedMs, formatDur, isPaused, MAX_PLANNED_MS, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
+import { clock24, elapsedAt, elapsedMs, finishesAt, formatDur, isPaused, MAX_PLANNED_MS, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
 import type { Settings } from "@/lib/settings";
 import { haptic, readPref, usePref } from "@/lib/device";
 import { useEffective } from "@/lib/prefs";
@@ -186,10 +186,11 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
 
   const running = active && !isPaused(active);
   // Fast tick for the readout while running; a slow one otherwise so widgets (the helper's plan) stay current.
+  // With "finish time" on, a medium one keeps its clock minute right while you set or pause a timer.
   useEffect(() => {
-    const id = setInterval(() => setT(Date.now() + offset), running ? 250 : 30_000);
+    const id = setInterval(() => setT(Date.now() + offset), running ? 250 : settings.showFinish ? 5_000 : 30_000);
     return () => clearInterval(id);
-  }, [running, offset]);
+  }, [running, offset, settings.showFinish]);
 
   // Countdown reached zero: the server closes it at its true end time.
   const expired = active?.mode === "countdown" && running && remainingMs(active, t) <= 0;
@@ -347,6 +348,11 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   }
   const ring = ringPref === "on" && active?.mode === "countdown";
   const canStart = mode === "stopwatch" || plannedMs > 0;
+  // Finish time (countdowns only): idle and paused always show it; while running it shows on hover, or always in touch mode / "show permanently".
+  const client = useSyncExternalStore(() => () => {}, () => true, () => false); // clock times are the browser's, not the server's
+  const counting = active ? active.mode === "countdown" : mode === "countdown";
+  const endAt = !counting ? null : active ? finishesAt(active, t) : plannedMs > 0 ? t + plannedMs : null;
+  const finishPinned = !running || touch === "on" || settings.finishAlways;
   const activeTag = active ? active.tag : tags.find((x) => x.id === tagId) ?? null;
   const menuOpen = tagMenu && zen && !running;
   const plain = paused ? "Paused" : active ? (active.mode === "countdown" ? "Remaining" : "Elapsed") : saved || " ";
@@ -405,6 +411,9 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
           {zenTag && <span className="tagpill" style={{ "--c": zenTag.color } as React.CSSProperties}>{zenTag.name}</span>}
           {!(zenTag && (plain === "Remaining" || plain === "Elapsed")) && plain}
         </p>
+        {settings.showFinish && counting && (
+          <p className={`finish muted${finishPinned ? "" : " hover"}`}>{client && endAt !== null && `Finishes at ${clock24(endAt, t)}`}</p>
+        )}
         {zen && !running && (
           <div className="zentag">
             <button className="tagbtn" style={zenTag ? ({ "--tc": zenTag.color } as React.CSSProperties) : undefined} aria-label="Choose tag" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setTagMenu((v) => !v)}>

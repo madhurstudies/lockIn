@@ -12,7 +12,7 @@ assert.equal(remainingMs(s, 50_000), 35_000);
 assert.equal(elapsedMs({ ...s, pauses: [], endedAt: 30_000 }, 99_999), 30_000); // ended: now is ignored
 console.log("session math ok");
 
-import { elapsedAt, focusIn, parseDuration } from "./session.ts";
+import { clock24, elapsedAt, focusIn, parseDuration } from "./session.ts";
 const base = { id: "y", mode: "stopwatch" as const, tag: null, pauses: [{ at: 10_000, resumedAt: 20_000 }] };
 // elapsedAt: before pause, during pause (frozen), after pause
 assert.equal(elapsedAt({ ...base, startedAt: 0 }, 5_000), 5_000);
@@ -68,3 +68,10 @@ assert.equal(hb.lengthMs, 30 * M);
 assert.equal(hb.breakMs, 5 * M);
 assert.ok(hb.weights[9] === 1 && hb.weights[3] === 0.25 && hb.learned);
 console.log("planner ok");
+
+// clock24: 24-hour, zero padded, "+1" past midnight
+const at = (h: number, m: number) => new Date(2026, 10, 2, h, m).getTime();
+assert.equal(clock24(at(14, 5), at(9, 0)), "14:05");
+assert.equal(clock24(at(0, 0), at(0, 0)), "00:00");
+assert.equal(clock24(at(23, 50) + 20 * 60_000, at(23, 50)), "00:10 +1");
+console.log("clock24 ok");

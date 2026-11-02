@@ -76,6 +76,13 @@ export function parseDuration(input: string, max = MAX_PLANNED_MS / 60_000): num
   return mins > 0 ? Math.min(mins, max) : null;
 }
 
+const p2 = (n: number) => String(n).padStart(2, "0");
+/** 24-hour clock time "HH:MM" (no locale lookup, so it is cheap); " +1" when it falls on a later day than `from`. */
+export function clock24(t: number, from: number): string {
+  const d = new Date(t);
+  return `${p2(d.getHours())}:${p2(d.getMinutes())}${d.getDate() !== new Date(from).getDate() ? " +1" : ""}`;
+}
+
 export function formatDur(ms: number): string {
   const m = Math.round(ms / 60_000);
   if (m < 1) return ms < 1000 ? "0m" : `${Math.round(ms / 1000)}s`;

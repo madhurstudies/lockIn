@@ -28,5 +28,11 @@ assert.equal(e.sounds, false);
 assert.equal(e.minFocusMins, 30);
 assert.equal(e.targetMins, 60);
 assert.equal(e.target, true);
-assert.equal(effective(off, {}).minFocusMins, 5); // sync off but nothing local yet: fall back to the shared value
+assert.equal(effective(off, {}).minFocusMins, 5);
+const f = effective({ ...server, sync: { ...server.sync, finish: false, finishAlways: false } }, { showFinish: false, finishAlways: true });
+assert.equal(f.showFinish, false);
+assert.equal(f.finishAlways, true);
+assert.equal(effective(server, { showFinish: false }).showFinish, true); // synced: shared value rules
+assert.deepEqual(sanitize({ showFinish: false, finishAlways: true }), { showFinish: false, finishAlways: true });
+assert.equal(sanitize({ showFinish: 1 }), null); // sync off but nothing local yet: fall back to the shared value
 console.log("settings ok");

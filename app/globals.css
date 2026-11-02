@@ -470,3 +470,9 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 :root[data-touch="on"] .tagmenu button { height: 48px; }
 @keyframes pop { from { opacity: 0; transform: scale(0.92); } }
 .srow > .textbtn { grid-column: 2 / -1; justify-self: end; }
+
+/* finish time: under the timer; while running it appears when the timer is hovered */
+.finish { margin: 0; font-size: 13px; height: 20px; }
+.finish.hover { opacity: 0; transition: opacity 0.2s var(--ease); }
+.ringbox:hover ~ .finish.hover { opacity: 1; }
+.card.zen .finish { font-size: 14px; }
