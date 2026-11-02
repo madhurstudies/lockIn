@@ -319,3 +319,57 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 :root[data-touch="on"] .srow { min-height: 64px; }
 :root[data-touch="on"] .pill { height: 40px; padding: 0 18px; }
 :root[data-touch="on"] .rowactions .textbtn { min-height: 44px; padding: 0 4px; }
+
+/* day */
+.day { max-width: 1040px; margin: 24px auto 0; }
+.daygrid { display: grid; gap: 16px; align-items: start; }
+@media (min-width: 900px) { .daygrid { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); } }
+.day .panel h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.day .seg { background: var(--raised); }
+.day .seg button[aria-pressed="true"] { background: var(--thumb); color: var(--text); }
+.daynote { margin: 0; }
+.inlink { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.daylist li { align-items: center; }
+.daylist li.off { opacity: 0.55; }
+.hatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; background: repeating-linear-gradient(135deg, var(--control) 0 2px, transparent 2px 4px); box-shadow: inset 0 0 0 1px var(--control); }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--accent); }
+.dayform { display: grid; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.fld { display: grid; gap: 4px; font-size: 13px; min-width: 0; }
+.fld2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dayform input[type="text"], .dayform input[type="time"] {
+  width: 100%; min-width: 0; height: 44px; padding: 0 14px; border: 0; border-radius: var(--radius-control); background: var(--raised); font-size: 16px; color: var(--text);
+}
+.dayform input::placeholder { color: var(--muted); }
+.daychips { display: flex; flex-wrap: wrap; gap: 8px; }
+.daychips .pill[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.formbtns { display: flex; gap: 12px; align-items: center; }
+.formbtns .primary { height: 44px; font-size: 16px; }
+.formbtns .pill { height: 44px; padding: 0 18px; }
+.dayform .error { min-height: 0; }
+.dayform .error:empty { display: none; }
+.daytotals { margin-bottom: 16px; background: var(--raised); }
+.daytotals > div + div { border-left-color: var(--surface); }
+.dayhead { font-size: 18px; }
+.strip { margin: 16px 0 8px; display: grid; gap: 6px; }
+.lane { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 8px; font-size: 12px; }
+.laneb { position: relative; height: 22px; border-radius: 6px; background: var(--raised); overflow: hidden; }
+.seg-b { position: absolute; top: 0; bottom: 0; min-width: 2px; border-radius: 3px; }
+.seg-b.hatch { width: auto; height: auto; background: repeating-linear-gradient(135deg, var(--control) 0 2px, transparent 2px 5px); box-shadow: inset 0 0 0 1px var(--control); }
+.seg-b.done { background: var(--chart-1); }
+.seg-b.plan { background: color-mix(in srgb, var(--accent) 30%, transparent); box-shadow: inset 0 0 0 2px var(--accent); }
+.nowline { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); }
+.axisrow { display: flex; justify-content: space-between; margin-left: 52px; font-size: 11px; }
+.dayplan { list-style: none; margin: 12px 0 0; padding: 0; }
+.dayplan li { display: grid; grid-template-columns: minmax(120px, auto) 1fr auto; align-items: center; gap: 12px; min-height: 44px; font-size: 15px; }
+.dayplan li + li { border-top: 1px solid var(--rule); }
+.dayplan .pill { display: inline-flex; align-items: center; }
+.habits { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--rule); display: grid; gap: 12px; }
+.habitgrid { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.habitgrid dt { font-size: 13px; }
+.habitgrid dd { margin: 2px 0 0; font-weight: 500; }
+.hours { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; align-items: end; height: 40px; }
+.hours b { display: block; border-radius: 2px; background: var(--chart-muted); }
+.hours b.top { background: var(--chart-1); }
+.habits .hfoot { margin: 0; }
+:root[data-touch="on"] .day .seg button { height: 44px; }
+:root[data-touch="on"] .daychips .pill { height: 44px; }

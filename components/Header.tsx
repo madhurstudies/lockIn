@@ -8,6 +8,7 @@ const svg = { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke:
 
 const icons = {
   timer: <svg {...svg}><circle cx="12" cy="13.5" r="7.5" /><path d="M12 13.5V10M10 3h4M18 6.5l1.5-1.5" /></svg>,
+  day: <svg {...svg}><rect x="4" y="5" width="16" height="15" rx="2.5" /><path d="M4 10h16M9 3v4M15 3v4" /></svg>,
   analysis: <svg {...svg}><path d="M5 20V12M12 20V5M19 20v-6" /></svg>,
   settings: (
     <svg {...svg}>
@@ -19,6 +20,7 @@ const icons = {
 
 const links = [
   ["/", "Timer", icons.timer],
+  ["/day", "Day", icons.day],
   ["/analysis", "Analysis", icons.analysis],
   ["/settings", "Settings", icons.settings],
 ] as const;

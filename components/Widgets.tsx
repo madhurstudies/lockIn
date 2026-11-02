@@ -1,20 +1,21 @@
 "use client";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { learn, plan } from "@/lib/planner";
-import { focusIn, formatDur, formatShort, remainingMs, type Session } from "@/lib/session";
+import { busyOn, type Busy, type Constraint } from "@/lib/constraints";
+import { learn, needed, plan } from "@/lib/planner";
+import { focusIn, formatDur, formatShort, type Session } from "@/lib/session";
 import type { Settings, WidgetId } from "@/lib/settings";
 
 const PRESETS: { id: WidgetId; name: string; about: string }[] = [
   { id: "focus-today", name: "Focus today", about: "Focused time since midnight, against your daily target when one is set." },
   { id: "helper", name: "Lock In helper", about: "Plans the sessions left to hit today's target before midnight, from your own focus habits." },
 ];
-const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+export const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 const DAY = 86_400_000;
-const HISTORY_DAYS = 28; // what the helper learns from
+export const HISTORY_DAYS = 28; // what the helper learns from
 
 /** Finished sessions since midnight `HISTORY_DAYS` ago, reloaded when the day rolls, a session starts or ends, or the tab returns. */
-function useHistory(today: number, activeId: string | undefined, on: boolean) {
+export function useHistory(today: number, activeId: string | undefined, on: boolean) {
   const [sessions, setSessions] = useState<Session[]>([]);
   useEffect(() => {
     if (!on) return;
@@ -29,6 +30,24 @@ function useHistory(today: number, activeId: string | undefined, on: boolean) {
     return () => { live = false; document.removeEventListener("visibilitychange", onVis); };
   }, [today, activeId, on]);
   return sessions;
+}
+
+/** The saved daily constraints, reloaded when the tab returns. */
+export function useConstraints(on: boolean) {
+  const [list, setList] = useState<Constraint[]>([]);
+  useEffect(() => {
+    if (!on) return;
+    let live = true;
+    const load = () =>
+      fetch("/api/constraints", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((c: Constraint[]) => live && setList(c));
+    load();
+    const onVis = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { live = false; document.removeEventListener("visibilitychange", onVis); };
+  }, [on]);
+  return list;
 }
 
 function FocusToday({ doneMs, targetMs }: { doneMs: number; targetMs: number | null }) {
@@ -51,18 +70,15 @@ function FocusToday({ doneMs, targetMs }: { doneMs: number; targetMs: number | n
 }
 
 /** Next sessions to reach the target by 23:59, laid out by lib/planner from the last four weeks. */
-function Helper({ history, active, now, today, doneMs, targetMs, onUse }: {
-  history: Session[]; active: Session | null; now: number; today: number; doneMs: number; targetMs: number | null; onUse: (ms: number) => void;
+function Helper({ history, busy, active, now, today, doneMs, targetMs, onUse }: {
+  history: Session[]; busy: Busy[]; active: Session | null; now: number; today: number; doneMs: number; targetMs: number | null; onUse: (ms: number) => void;
 }) {
   const habits = useMemo(() => learn(history, today), [history, today]);
   if (targetMs === null)
     return <Box><p className="hmsg">Set a daily target in Settings and this will plan the rest of your day.</p></Box>;
 
-  // A running countdown is already booked: count what it has left and plan from its end.
-  let left = targetMs - doneMs, from = now;
-  if (active?.mode === "countdown") { const r = remainingMs(active, now); left -= r; from = now + r + habits.breakMs; }
-  else if (active) from = now + habits.breakMs; // stopwatch: after you stop
-  const p = plan(left, from, new Date(today).setHours(23, 59, 0, 0), habits);
+  const { left, from } = needed(targetMs, doneMs, active, now, habits);
+  const p = plan(left, from, new Date(today).setHours(23, 59, 0, 0), habits, busy);
 
   if (p.status === "met")
     return <Box><p className="hmsg">{doneMs >= targetMs ? "Target reached. Anything more is a bonus." : "This session takes you to your target."}</p></Box>;
@@ -70,7 +86,7 @@ function Helper({ history, active, now, today, doneMs, targetMs, onUse }: {
     return <Box><p className="hmsg">Not enough of today left for another session. Fresh target at midnight.</p></Box>;
 
   const last = p.blocks[p.blocks.length - 1];
-  const note = p.status === "plan" ? `Done by ${clock(last.start + last.ms)}`
+  const note = p.status === "plan" ? `Done by ${clock(last.start + last.wall)}`
     : p.status === "tight" ? "Tight: 5m breaks to make midnight"
     : `${formatShort(p.plannedMs)} of ${formatShort(p.leftMs)} still fits today`;
   return (
@@ -103,6 +119,7 @@ function Box({ children }: { children: React.ReactNode }) {
 export function WidgetRow({ settings, now, active, onUse }: { settings: Settings; now: number; active: Session | null; onUse: (ms: number) => void }) {
   const today = new Date(now).setHours(0, 0, 0, 0); // overnight sessions split at midnight, as in Analysis
   const history = useHistory(today, active?.id, settings.widgets.length > 0);
+  const constraints = useConstraints(settings.widgets.includes("helper"));
   // Days and clock times depend on the browser's timezone, not the server's, so widgets render client-side only.
   const client = useSyncExternalStore(() => () => {}, () => true, () => false);
   if (!settings.widgets.length || !client) return null;
@@ -114,7 +131,7 @@ export function WidgetRow({ settings, now, active, onUse }: { settings: Settings
     <div className="widgets" aria-label="Widgets">
       {settings.widgets.map((w) =>
         w === "focus-today" ? <FocusToday key={w} doneMs={doneMs} targetMs={targetMs} />
-        : <Helper key={w} history={history} active={active} now={now} today={today} doneMs={doneMs} targetMs={targetMs} onUse={onUse} />,
+        : <Helper key={w} history={history} busy={busyOn(constraints, today)} active={active} now={now} today={today} doneMs={doneMs} targetMs={targetMs} onUse={onUse} />,
       )}
     </div>
   );

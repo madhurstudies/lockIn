@@ -91,14 +91,14 @@ function Ring({ session, t }: { session: Session; t: number }) {
   );
 }
 
-export default function TimerView({ initialActive, initialNow, initialTags, initialSettings }: {
-  initialActive: Session | null; initialNow: number; initialTags: Tag[]; initialSettings: Settings;
+export default function TimerView({ initialActive, initialNow, initialTags, initialSettings, initialMins }: {
+  initialActive: Session | null; initialNow: number; initialTags: Tag[]; initialSettings: Settings; initialMins?: number; // initialMins: from the Day tab's Start
 }) {
   const [active, setActive] = useState(initialActive);
   const [tags, setTags] = useState(initialTags);
   const [mode, setMode] = useState<Mode>(initialActive?.mode ?? "countdown");
-  const [hours, setHours] = useState(0);
-  const [mins, setMins] = useState(25);
+  const [hours, setHours] = useState(initialMins ? Math.floor(initialMins / 60) : 0);
+  const [mins, setMins] = useState(initialMins ? initialMins % 60 : 25);
   const [jump, setJump] = useState({ h: 0, m: 0 }); // bump after setting hours/mins from code so that wheel follows
   const [tagId, setTagId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);

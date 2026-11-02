@@ -61,8 +61,8 @@ export function focusIn(s: Session, from: number, to: number, now = Date.now()):
   );
 }
 
-/** Typed duration → whole minutes clamped to 1..180, or null. Accepts 25, 90, 1:30, 2h, 45m, 1h30m. */
-export function parseDuration(input: string): number | null {
+/** Typed duration → whole minutes clamped to 1..`max` (default 180), or null. Accepts 25, 90, 1:30, 2h, 45m, 1h30m. */
+export function parseDuration(input: string, max = MAX_PLANNED_MS / 60_000): number | null {
   const str = input.trim().toLowerCase();
   let mins: number;
   const colon = str.match(/^(\d{1,2}):(\d{1,2})$/);
@@ -72,7 +72,7 @@ export function parseDuration(input: string): number | null {
     if (!m || (m[1] === undefined && m[2] === undefined)) return null;
     mins = Number(m[1] ?? 0) * 60 + Number(m[2] ?? 0);
   }
-  return mins > 0 ? Math.min(mins, MAX_PLANNED_MS / 60_000) : null;
+  return mins > 0 ? Math.min(mins, max) : null;
 }
 
 export function formatDur(ms: number): string {
