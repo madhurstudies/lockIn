@@ -7,6 +7,7 @@ export type Session = {
   tag: Tag | null; // snapshot, so analysis survives tag edits
   startedAt: number;
   plannedMs?: number; // countdown only
+  minFocusMs?: number; // fixed when it starts: ending with less focused time than this discards it instead of recording it
   pauses: Pause[];
   endedAt?: number;
 };

@@ -6,6 +6,7 @@ import { WidgetRow, WidgetSheet } from "./Widgets";
 import { elapsedAt, elapsedMs, formatDur, isPaused, MAX_PLANNED_MS, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
 import type { Settings } from "@/lib/settings";
 import { haptic, readPref, usePref } from "@/lib/device";
+import { useEffective } from "@/lib/prefs";
 import { beep, doubleBeep, unlock } from "@/lib/sound";
 
 const SWATCHES = ["#ff3b30", "#ff9500", "#ffcc00", "#34c759", "#30b0c7", "#0a84ff", "#ff2d55", "#8e8e93"];
@@ -66,6 +67,10 @@ function Wheel({ label, count, value, onChange, jump, onTapSelected }: {
 }
 
 
+/** Message for a countdown that ran its full length. It is not recorded when shorter than the minimum it started with. */
+const doneMsg = (s: Session) =>
+  `Done · ${fmt(s.plannedMs!, "floor")}${s.tag ? ` · ${s.tag.name}` : ""}${s.plannedMs! < (s.minFocusMs ?? 0) ? " · not saved, under the minimum" : ""}`;
+
 /** iOS-style press: the timer shrinks a touch, then springs back. Skipped when animations are off. */
 function squish(el: HTMLElement) {
   if (readPref("motion") === "off" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -119,7 +124,8 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const [t, setT] = useState(initialNow); // server-clock "now", advanced by the tick
   const [offset, setOffset] = useState(0); // server clock minus local clock (set on first sync)
   const finishing = useRef(false);
-  const [settings, setSettings] = useState(initialSettings);
+  const [shared, setSettings] = useState(initialSettings); // as saved on the server
+  const settings = useEffective(shared); // what this device acts on (rows with sync off keep their own value)
   const [typing, setTyping] = useState<string | null>(null); // text while the user types a duration
   const [typeError, setTypeError] = useState(false);
   const touch = usePref("touch");
@@ -129,7 +135,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const [tagMenu, setTagMenu] = useState(false); // zen: the tag picker is open
 
   async function updateSettings(patch: Partial<Settings>) {
-    const prev = settings;
+    const prev = shared;
     setSettings({ ...prev, ...patch });
     const r = await fetch("/api/settings", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
     if (!r.ok) setSettings(prev);
@@ -142,7 +148,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     const prev = activeRef.current;
     // The server already closed a countdown that ran out while this page was frozen or away.
     if (prev?.mode === "countdown" && !j.active && !finishing.current && !isPaused(prev) && remainingMs(prev, j.now) <= 0)
-      setSaved(`Done · ${fmt(prev.plannedMs!, "floor")}${prev.tag ? ` · ${prev.tag.name}` : ""}`);
+      setSaved(doneMsg(prev));
     activeRef.current = j.active;
     setOffset(o);
     setT(Date.now() + o);
@@ -193,7 +199,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
       finishing.current = true;
       if (settings.sounds) doubleBeep();
       haptic([200, 100, 200]);
-      setSaved(`Done · ${fmt(active!.plannedMs!, "floor")}${active!.tag ? ` · ${active!.tag.name}` : ""}`);
+      setSaved(doneMsg(active!));
       send({ action: "stop" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -301,11 +307,14 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
       if (Notification.permission === "default") Notification.requestPermission().then((p) => { if (p === "granted") void subscribePush(); });
       else if (Notification.permission === "granted") subscribePush();
     }
-    send({ action: "start", mode, tagId, plannedMs: mode === "countdown" ? plannedMs : undefined });
+    send({ action: "start", mode, tagId, plannedMs: mode === "countdown" ? plannedMs : undefined, minMs: settings.minFocusMins * 60_000 });
   };
   const stop = () => {
     haptic();
-    if (active) setSaved(`Saved · ${fmt(elapsedMs(active, now()), "floor")}${active.tag ? ` · ${active.tag.name}` : ""}`);
+    if (active) {
+      const ms = elapsedMs(active, now());
+      setSaved(`${ms < (active.minFocusMs ?? 0) ? "Not saved, under the minimum" : "Saved"} · ${fmt(ms, "floor")}${active.tag ? ` · ${active.tag.name}` : ""}`);
+    }
     send({ action: "stop" });
   };
 

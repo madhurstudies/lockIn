@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { DEFAULTS, type Settings } from "./settings";
+import { DEFAULTS, MIN_FOCUS_MAX, MIN_FOCUS_MIN, type Settings, type SettingsPatch } from "./settings";
 import { dateKey, type Constraint } from "./constraints";
 import { get, set } from "./db";
 import { elapsedMs, isPaused, MAX_PLANNED_MS, type Mode, type Session, type Tag } from "./session";
@@ -14,7 +14,8 @@ async function finish(s: Session, endedAt: number) {
   const done = { ...s, endedAt };
   // an open pause closes at the end of the session
   done.pauses = s.pauses.map((p) => (p.resumedAt === undefined ? { ...p, resumedAt: endedAt } : p));
-  await set("sessions", [...(await getSessions()), done]);
+  // Too little focus to count (its minimum was fixed at the start, so this holds on any device or alarm).
+  if (elapsedMs(done, endedAt) >= (s.minFocusMs ?? 0)) await set("sessions", [...(await getSessions()), done]);
   await set("active", null);
 }
 
@@ -48,7 +49,7 @@ export async function expireIfDue(id: string, now = Date.now()): Promise<Session
 }
 
 export type Action =
-  | { action: "start"; mode: Mode; tagId?: string | null; plannedMs?: number }
+  | { action: "start"; mode: Mode; tagId?: string | null; plannedMs?: number; minMs?: number }
   | { action: "pause" | "resume" | "stop" }
   | { action: "tag"; tagId: string | null }; // retag a paused session (zen mode)
 
@@ -61,7 +62,11 @@ export async function act(a: Action, now = Date.now()): Promise<Session | null> 
     const planned = a.mode === "countdown" ? Math.round(Number(a.plannedMs)) : undefined;
     if (a.mode === "countdown" && !(planned! > 0 && planned! <= MAX_PLANNED_MS)) throw new Error("bad duration");
     const tag = a.tagId ? ((await getTags()).find((t) => t.id === a.tagId) ?? null) : null;
-    const next: Session = { id: randomUUID(), mode: a.mode, tag, startedAt: now, plannedMs: planned, pauses: [] };
+    // This device's minimum (it may not sync); otherwise the shared one.
+    const lo = MIN_FOCUS_MIN * 60_000, hi = MIN_FOCUS_MAX * 60_000;
+    const asked = Math.round(Number(a.minMs));
+    const minFocusMs = asked >= lo && asked <= hi ? asked : (await getSettings()).minFocusMins * 60_000;
+    const next: Session = { id: randomUUID(), mode: a.mode, tag, startedAt: now, plannedMs: planned, minFocusMs, pauses: [] };
     await set("active", next);
     return next;
   }
@@ -86,11 +91,13 @@ export async function addTag(name: unknown, color: unknown): Promise<Tag> {
 /** Saved settings over the defaults; keys no longer in Settings (e.g. the old dayStartHour) are dropped. */
 export async function getSettings(): Promise<Settings> {
   const saved = (await get<Partial<Settings>>("settings")) ?? {};
-  return Object.fromEntries(Object.entries(DEFAULTS).map(([k, v]) => [k, saved[k as keyof Settings] ?? v])) as Settings;
+  const out = Object.fromEntries(Object.entries(DEFAULTS).map(([k, v]) => [k, saved[k as keyof Settings] ?? v])) as Settings;
+  return { ...out, sync: { ...DEFAULTS.sync, ...saved.sync } };
 }
 
-export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
-  const next = { ...(await getSettings()), ...patch };
+export async function saveSettings(patch: SettingsPatch): Promise<Settings> {
+  const cur = await getSettings();
+  const next = { ...cur, ...patch, sync: { ...cur.sync, ...patch.sync } };
   await set("settings", next);
   return next;
 }

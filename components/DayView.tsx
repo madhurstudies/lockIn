@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { appliesOn, busyOn, dateKey, MAX_CONSTRAINTS, type Constraint } from "@/lib/constraints";
 import { freeWindows, learn, needed, plan } from "@/lib/planner";
 import { focusIn, formatShort, parseDuration, segments, type Session } from "@/lib/session";
+import { useEffective } from "@/lib/prefs";
 import type { Settings } from "@/lib/settings";
 import { clock, useHistory } from "./Widgets";
 
@@ -40,7 +41,8 @@ export default function DayView({ initialActive, initialNow, initialConstraints,
   return <Day now={now} active={initialActive} initial={initialConstraints} settings={settings} />;
 }
 
-function Day({ now, active, initial, settings }: { now: number; active: Session | null; initial: Constraint[]; settings: Settings }) {
+function Day({ now, active, initial, settings: shared }: { now: number; active: Session | null; initial: Constraint[]; settings: Settings }) {
+  const settings = useEffective(shared);
   const today = new Date(now).setHours(0, 0, 0, 0);
   const todayKey = dateKey(today);
   const [list, setList] = useState(initial);

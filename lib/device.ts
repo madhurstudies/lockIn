@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { Theme } from "./settings";
 
 // Per-device preferences, kept in localStorage and mirrored onto <html data-*> so CSS can react before paint
 // (see the inline script in app/layout.tsx). Theme lives here too but keeps its own "system" default.
@@ -23,9 +24,20 @@ export function writePref(k: DevicePref, v: "on" | "off") {
 }
 
 const listeners = new Set<() => void>();
-const subscribe = (f: () => void) => (listeners.add(f), () => void listeners.delete(f));
+export const subscribe = (f: () => void) => (listeners.add(f), () => void listeners.delete(f));
 /** Call after changing any <html data-*> preference by hand (the theme picker does). */
 export const notifyPrefs = () => listeners.forEach((f) => f());
+/** Apply the appearance on this device (<html data-theme> plus localStorage); "system" clears both. */
+export function setTheme(t: Theme) {
+  const el = document.documentElement;
+  if (t === "system") el.removeAttribute("data-theme");
+  else el.setAttribute("data-theme", t);
+  try {
+    if (t === "system") localStorage.removeItem("theme");
+    else localStorage.setItem("theme", t);
+  } catch {}
+  notifyPrefs();
+}
 /** A <html data-*> value, `fallback` on the server and during hydration. */
 export const useDataset = <T extends string>(k: string, fallback: T) =>
   useSyncExternalStore(subscribe, () => (document.documentElement.dataset[k] as T | undefined) ?? fallback, () => fallback);
