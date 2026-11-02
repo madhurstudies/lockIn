@@ -373,3 +373,46 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 .habits .hfoot { margin: 0; }
 :root[data-touch="on"] .day .seg button { height: 44px; }
 :root[data-touch="on"] .daychips .pill { height: 44px; }
+
+/* zen mode: the timer card fills the browser window; only the view changes */
+.stage { position: relative; }
+.zenbtn { position: absolute; top: -4px; right: -4px; z-index: 1; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); transition: color 0.2s var(--ease), background-color 0.2s var(--ease); }
+.zenbtn:hover, .zenbtn:focus-visible { color: var(--text); background: var(--raised); }
+.zenbtn::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 6px); right: 0; padding: 5px 10px; border-radius: 8px; white-space: nowrap;
+  background: var(--raised); color: var(--text); font-size: 12px; font-weight: 500; pointer-events: none;
+  opacity: 0; transform: translateY(-3px); transition: opacity 0.16s var(--ease), transform 0.16s var(--ease);
+}
+@media (hover: hover) { .zenbtn:hover::after { opacity: 1; transform: none; } }
+.zenbtn:focus-visible::after { opacity: 1; transform: none; }
+
+:root .card.zen {
+  position: fixed; inset: 0; z-index: 60; max-width: none; margin: 0; padding: 0; gap: 0; border-radius: 0;
+  background: var(--ground); display: grid; place-items: center; animation: fade 0.24s var(--ease);
+}
+.card.zen > .seg, .card.zen > .tags, .card.zen > .newtag, .card.zen .zenbtn { display: none; }
+.card.zen .stage { min-height: 0; width: 100%; height: 100%; align-content: center; gap: 12px; padding: 0 16px; }
+.card.zen .wheel { max-width: 420px; }
+:root .card.zen .readout { font-size: min(22vmin, 18vw); }
+:root .card.zen .ringbox.has-ring { width: min(78vmin, 720px); }
+:root .card.zen .ringbox.has-ring .readout { font-size: min(15vmin, 14vw); }
+.card.zen .status { font-size: 16px; }
+:root .card.zen .controls {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); padding: 0 clamp(16px, 4vw, 56px); pointer-events: none;
+  transition: opacity 0.24s var(--ease), visibility 0.24s;
+}
+.card.zen .controls .circle { pointer-events: auto; }
+:root .card.zen .circle { width: 108px; height: 108px; font-size: 19px; }
+:root[data-touch="on"] .card.zen .circle { width: 124px; height: 124px; font-size: 20px; }
+.card.zen.running .controls { opacity: 0; visibility: hidden; }
+@media (max-width: 599px) and (orientation: portrait) {
+  :root .card.zen .controls { top: auto; bottom: calc(32px + env(safe-area-inset-bottom, 0px)); transform: none; }
+  :root .card.zen .circle { width: 92px; height: 92px; }
+}
+.zenexit {
+  position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); height: 40px; padding: 0 16px 0 12px;
+  display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; background: var(--raised); font-weight: 500; font-size: 14px;
+  opacity: 0; visibility: hidden; transition: opacity 0.2s var(--ease), visibility 0.2s;
+}
+.zenexit[data-show="true"] { opacity: 1; visibility: visible; }
+:root[data-touch="on"] .zenexit { height: 48px; }

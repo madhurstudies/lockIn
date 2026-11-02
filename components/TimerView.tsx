@@ -113,6 +113,8 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const [typing, setTyping] = useState<string | null>(null); // text while the user types a duration
   const [typeError, setTypeError] = useState(false);
   const touch = usePref("touch");
+  const [zen, setZen] = useState(false); // zen mode: only the timer, filling the browser window
+  const [peek, setPeek] = useState(false); // zen: the way back is showing
 
   async function updateSettings(patch: Partial<Settings>) {
     const prev = settings;
@@ -296,6 +298,29 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   };
 
   const paused = !!active && isPaused(active);
+
+  // Zen mode is only a view: the same card, enlarged. Page scroll is locked, Esc leaves, Space pauses a running timer.
+  useEffect(() => {
+    if (!zen) return;
+    const html = document.documentElement;
+    const prev = html.style.overflow;
+    html.style.overflow = "hidden";
+    const key = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest("input, textarea")) return;
+      if (e.key === "Escape") { setZen(false); setPeek(false); }
+      else if (e.key === " " && running && !el.closest("button")) { e.preventDefault(); haptic(); setPeek(true); void send({ action: "pause" }); }
+    };
+    document.addEventListener("keydown", key);
+    return () => { html.style.overflow = prev; document.removeEventListener("keydown", key); };
+  }, [zen, running, send]);
+
+  /** A click on the empty canvas: pauses a running timer; otherwise shows or hides the way back. */
+  function zenClick(e: React.MouseEvent) {
+    if (!zen || (e.target as Element).closest("button, input, form, .wheel")) return;
+    if (running) { haptic(); void send({ action: "pause" }); setPeek(true); }
+    else setPeek((v) => !v);
+  }
   const ring = settings.ring && active?.mode === "countdown";
   const canStart = mode === "stopwatch" || plannedMs > 0;
   const activeTag = active ? active.tag : tags.find((x) => x.id === tagId) ?? null;
@@ -303,7 +328,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   return (
     <>
     <h1 className="sr-only">Timer</h1>
-    <section className="card" aria-label="Timer">
+    <section className={`card${zen ? " zen" : ""}${zen && running ? " running" : ""}`} aria-label="Timer" onClick={zenClick}>
       <div className="seg" role="group" aria-label="Mode">
         {(["stopwatch", "countdown"] as const).map((m) => (
           <button key={m} aria-pressed={(active?.mode ?? mode) === m} disabled={!!active} onClick={() => setMode(m)}>
@@ -313,6 +338,9 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
       </div>
 
       <div className="stage">
+        <button className="zenbtn" data-tip="Enter zen mode" aria-label="Enter zen mode" onClick={() => { setPeek(false); setZen(true); }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7" /></svg>
+        </button>
         {!active && mode === "countdown" ? (
           typing !== null ? (
             <form className="typebox" onSubmit={(e) => { e.preventDefault(); commitTyped(); }}>
@@ -390,6 +418,12 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
           <button className="circle go" onClick={() => { haptic(); send({ action: "pause" }); }} disabled={busy}>Pause</button>
         )}
       </div>
+      {zen && (
+        <button className="zenexit" data-show={peek && !running} onClick={() => { setZen(false); setPeek(false); }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 14h6v6M10 14l-7 7M20 10h-6V4M14 10l7-7" /></svg>
+          Return to normal
+        </button>
+      )}
     </section>
     <WidgetRow settings={settings} now={t} active={active} onUse={loadPlan} />
     <Guide />
