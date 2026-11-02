@@ -394,7 +394,11 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 .card.zen .stage { min-height: 0; width: 100%; height: 100%; align-content: center; gap: 12px; padding: 0 16px; }
 .card.zen .wheel { max-width: 420px; }
 :root .card.zen .readout { font-size: min(22vmin, 18vw); }
-:root .card.zen .ringbox.has-ring { width: min(78vmin, 720px); }
+:root .card.zen .ringbox { width: min(78vmin, 720px); aspect-ratio: 1; border-radius: 50%; }
+/* the timer area: pointer while a session exists, and a thin ring (in the text colour, never the arc's) when hovered */
+.card.zen.live .ringbox { cursor: pointer; }
+.card.zen .ringbox::after { content: ""; position: absolute; inset: -3%; border-radius: 50%; border: 1.5px solid var(--text); opacity: 0; pointer-events: none; transition: opacity 0.2s var(--ease); }
+@media (hover: hover) { .card.zen.live .ringbox:hover::after { opacity: 0.5; } }
 :root .card.zen .ringbox.has-ring .readout { font-size: min(15vmin, 14vw); }
 .card.zen .status { font-size: 16px; }
 :root .card.zen .controls {
@@ -409,13 +413,21 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
   :root .card.zen .controls { top: auto; bottom: calc(32px + env(safe-area-inset-bottom, 0px)); transform: none; }
   :root .card.zen .circle { width: 92px; height: 92px; }
 }
+.zentools { position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); display: flex; align-items: center; gap: 4px; }
 .zenexit {
-  position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); min-width: 40px; height: 40px;
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px; color: var(--muted); font-weight: 500; font-size: 14px;
-  transition: color 0.2s var(--ease), background-color 0.2s var(--ease);
+  min-width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px;
+  color: var(--muted); font-weight: 500; font-size: 14px; transition: color 0.2s var(--ease), background-color 0.2s var(--ease);
 }
 .zenexit:hover, .zenexit[data-open="true"] { background: var(--raised); color: var(--text); }
 .zenexit span { display: none; }
 .zenexit[data-open="true"] { padding: 0 16px 0 12px; }
 .zenexit[data-open="true"] span { display: inline; }
-:root[data-touch="on"] .zenexit { min-width: 48px; height: 48px; }
+:root[data-touch="on"] .zenexit, :root[data-touch="on"] .zentools .ringtoggle { min-width: 48px; height: 48px; }
+
+/* progress-ring quick toggle: top bar and zen mode */
+.ringtoggle { width: 40px; height: 40px; border-radius: 50%; display: inline-grid; place-items: center; color: var(--muted); flex: none; transition: color 0.2s var(--ease), background-color 0.2s var(--ease); }
+.ringtoggle:hover { color: var(--text); background: var(--raised); }
+.ringtoggle[aria-pressed="true"] { color: var(--accent); }
+.nav .navtool { width: 36px; height: 36px; margin-left: 4px; }
+.nav .navtool:hover { background: var(--active); }
+@media (max-width: 599px) { .nav .navtool { width: 44px; margin-left: 0; } }

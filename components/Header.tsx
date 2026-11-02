@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
 import Logo from "./Logo";
+import RingToggle from "./RingToggle";
 
 const svg = { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true } as const;
 
@@ -64,6 +65,7 @@ export default function Header() {
             {icon}<span className="navlabel">{label}</span>
           </Link>
         ))}
+        <RingToggle className="navtool" />
       </nav>
       {fs !== "none" && (
         <button className="quiet icon" onClick={toggleFullscreen} aria-label={fs === "on" ? "Exit full screen" : "Full screen"} aria-pressed={fs === "on"}>

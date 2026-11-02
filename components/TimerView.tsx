@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Guide from "./Guide";
+import RingToggle from "./RingToggle";
 import { WidgetRow, WidgetSheet } from "./Widgets";
 import { elapsedAt, elapsedMs, formatDur, isPaused, MAX_PLANNED_MS, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
 import type { Settings } from "@/lib/settings";
@@ -113,6 +114,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const [typing, setTyping] = useState<string | null>(null); // text while the user types a duration
   const [typeError, setTypeError] = useState(false);
   const touch = usePref("touch");
+  const ringPref = usePref("ring");
   const [zen, setZen] = useState(false); // zen mode: only the timer, filling the browser window
   const [peek, setPeek] = useState(false); // zen: the way back is showing
 
@@ -299,6 +301,9 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
 
   const paused = !!active && isPaused(active);
 
+  /** Zen: pause a running timer, resume a paused one. */
+  const toggle = () => { haptic(); void send({ action: paused ? "resume" : "pause" }); };
+
   // Zen mode is only a view: the same card, enlarged. Page scroll is locked, Esc leaves, Space pauses a running timer.
   useEffect(() => {
     if (!zen) return;
@@ -309,32 +314,26 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
       const el = e.target as HTMLElement;
       if (el.closest("input, textarea")) return;
       if (e.key === "Escape") { setZen(false); setPeek(false); }
-      else if (e.key === " " && running && !el.closest("button")) { e.preventDefault(); haptic(); void send({ action: "pause" }); }
+      else if (e.key === " " && active && !el.closest("button")) { e.preventDefault(); haptic(); void send({ action: paused ? "resume" : "pause" }); }
     };
     document.addEventListener("keydown", key);
     return () => { html.style.overflow = prev; document.removeEventListener("keydown", key); };
-  }, [zen, running, send]);
+  }, [zen, active, paused, send]);
 
-  /** Left click: folds the exit label away, and a click on the empty canvas pauses a running timer. */
-  function zenClick(e: React.MouseEvent) {
-    setPeek(false);
-    if (!zen || (e.target as Element).closest("button, input, form, .wheel")) return;
-    if (running) { haptic(); void send({ action: "pause" }); }
-  }
   /** Right click anywhere in zen mode (not in a text field): spells out the way back. */
   function zenMenu(e: React.MouseEvent) {
     if (!zen || (e.target as Element).closest("input")) return;
     e.preventDefault();
     setPeek(true);
   }
-  const ring = settings.ring && active?.mode === "countdown";
+  const ring = ringPref === "on" && active?.mode === "countdown";
   const canStart = mode === "stopwatch" || plannedMs > 0;
   const activeTag = active ? active.tag : tags.find((x) => x.id === tagId) ?? null;
 
   return (
     <>
     <h1 className="sr-only">Timer</h1>
-    <section className={`card${zen ? " zen" : ""}${zen && running ? " running" : ""}`} aria-label="Timer" onClick={zenClick} onContextMenu={zenMenu}>
+    <section className={`card${zen ? " zen" : ""}${zen && running ? " running" : ""}${zen && active ? " live" : ""}`} aria-label="Timer" onClick={() => setPeek(false)} onContextMenu={zenMenu}>
       <div className="seg" role="group" aria-label="Mode">
         {(["stopwatch", "countdown"] as const).map((m) => (
           <button key={m} aria-pressed={(active?.mode ?? mode) === m} disabled={!!active} onClick={() => setMode(m)}>
@@ -373,7 +372,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
             </div>
           )
         ) : (
-          <div className={`ringbox${ring ? " has-ring" : ""}`}>
+          <div className={`ringbox${ring ? " has-ring" : ""}`} onClick={zen && active ? toggle : undefined}>
             {ring && <Ring session={active!} t={t} />}
             <div className={`readout num${paused ? " paused" : ""}`} role="timer" aria-live="off">{readout}</div>
           </div>
@@ -425,10 +424,13 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
         )}
       </div>
       {zen && (
+        <div className="zentools">
+        <RingToggle />
         <button className="zenexit" data-open={peek} aria-label="Return to normal" onClick={() => { setZen(false); setPeek(false); }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 14h6v6M10 14l-7 7M20 10h-6V4M14 10l7-7" /></svg>
           <span>Return to normal</span>
         </button>
+        </div>
       )}
     </section>
     <WidgetRow settings={settings} now={t} active={active} onUse={loadPlan} />

@@ -2,9 +2,9 @@ import { useSyncExternalStore } from "react";
 
 // Per-device preferences, kept in localStorage and mirrored onto <html data-*> so CSS can react before paint
 // (see the inline script in app/layout.tsx). Theme lives here too but keeps its own "system" default.
-export type DevicePref = "touch" | "motion";
+export type DevicePref = "touch" | "motion" | "ring";
 
-export const DEVICE_DEFAULTS: Record<DevicePref, "on" | "off"> = { touch: "off", motion: "on" };
+export const DEVICE_DEFAULTS: Record<DevicePref, "on" | "off"> = { touch: "off", motion: "on", ring: "off" };
 
 export function readPref(k: DevicePref): "on" | "off" {
   if (typeof document === "undefined") return DEVICE_DEFAULTS[k];

@@ -24,6 +24,7 @@ export default function SettingsView({ initial }: { initial: Settings }) {
   const theme = useDataset<Theme>("theme", "system");
   const touch = usePref("touch");
   const motion = usePref("motion");
+  const ring = usePref("ring");
 
   async function update(patch: Partial<Settings>) {
     const prev = s;
@@ -53,9 +54,6 @@ export default function SettingsView({ initial }: { initial: Settings }) {
     <div className="settings">
       <h1 className="pagetitle">Settings</h1>
       <div className="group">
-        <Row title="Progress ring" hint="Circle around the timer that empties as the countdown runs. Pauses show in cyan.">
-          <input type="checkbox" role="switch" className="switch" checked={s.ring} onChange={(e) => update({ ring: e.target.checked })} aria-label="Progress ring" />
-        </Row>
         <Row title="Sounds" hint="One bleep on start, two when a countdown ends.">
           <input type="checkbox" role="switch" className="switch" checked={s.sounds} onChange={(e) => update({ sounds: e.target.checked })} aria-label="Sounds" />
         </Row>
@@ -84,6 +82,9 @@ export default function SettingsView({ initial }: { initial: Settings }) {
         </Row>
         <Row title="Touch-friendly mode" hint="Larger buttons and timer, screen stays awake during a session, light haptics on Android.">
           <input type="checkbox" role="switch" className="switch" checked={touch === "on"} onChange={(e) => writePref("touch", e.target.checked ? "on" : "off")} aria-label="Touch-friendly mode" />
+        </Row>
+        <Row title="Progress ring" hint="Circle around the timer that empties as the countdown runs. Pauses show in cyan. Also in the top bar and in zen mode.">
+          <input type="checkbox" role="switch" className="switch" checked={ring === "on"} onChange={(e) => writePref("ring", e.target.checked ? "on" : "off")} aria-label="Progress ring" />
         </Row>
         <Row title="Animations" hint="Gentle motion between screens and states. Also off if your system asks for reduced motion.">
           <input type="checkbox" role="switch" className="switch" checked={motion === "on"} onChange={(e) => writePref("motion", e.target.checked ? "on" : "off")} aria-label="Animations" />
