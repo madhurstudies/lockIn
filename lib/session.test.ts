@@ -38,7 +38,7 @@ console.log("analysis ok");
 import { learn, plan } from "./planner.ts";
 const M = 60_000, day0 = new Date(2026, 0, 5).getTime(); // a local midnight
 const end = day0 + 23 * H + 59 * M;
-const flat = { lengthMs: 45 * M, breakMs: 10 * M, weights: Array(24).fill(1), learned: false };
+const flat = { lengthMs: 45 * M, breakMs: 10 * M, weights: Array(24).fill(1), learned: false, pauseRate: 0, pauseMs: 0, pausesPerHour: 0 };
 assert.equal(plan(0, day0 + 9 * H, end, flat).status, "met");
 // 2h left at 09:00 with 45m habit: 3 x 40m, sooner first when every hour is equal, breaks respected
 const p = plan(2 * H, day0 + 9 * H, end, flat);
