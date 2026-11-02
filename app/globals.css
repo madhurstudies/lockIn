@@ -410,9 +410,12 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
   :root .card.zen .circle { width: 92px; height: 92px; }
 }
 .zenexit {
-  position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); height: 40px; padding: 0 16px 0 12px;
-  display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; background: var(--raised); font-weight: 500; font-size: 14px;
-  opacity: 0; visibility: hidden; transition: opacity 0.2s var(--ease), visibility 0.2s;
+  position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px)); min-width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px; color: var(--muted); font-weight: 500; font-size: 14px;
+  transition: color 0.2s var(--ease), background-color 0.2s var(--ease);
 }
-.zenexit[data-show="true"] { opacity: 1; visibility: visible; }
-:root[data-touch="on"] .zenexit { height: 48px; }
+.zenexit:hover, .zenexit[data-open="true"] { background: var(--raised); color: var(--text); }
+.zenexit span { display: none; }
+.zenexit[data-open="true"] { padding: 0 16px 0 12px; }
+.zenexit[data-open="true"] span { display: inline; }
+:root[data-touch="on"] .zenexit { min-width: 48px; height: 48px; }

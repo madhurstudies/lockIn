@@ -309,17 +309,23 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
       const el = e.target as HTMLElement;
       if (el.closest("input, textarea")) return;
       if (e.key === "Escape") { setZen(false); setPeek(false); }
-      else if (e.key === " " && running && !el.closest("button")) { e.preventDefault(); haptic(); setPeek(true); void send({ action: "pause" }); }
+      else if (e.key === " " && running && !el.closest("button")) { e.preventDefault(); haptic(); void send({ action: "pause" }); }
     };
     document.addEventListener("keydown", key);
     return () => { html.style.overflow = prev; document.removeEventListener("keydown", key); };
   }, [zen, running, send]);
 
-  /** A click on the empty canvas: pauses a running timer; otherwise shows or hides the way back. */
+  /** Left click: folds the exit label away, and a click on the empty canvas pauses a running timer. */
   function zenClick(e: React.MouseEvent) {
+    setPeek(false);
     if (!zen || (e.target as Element).closest("button, input, form, .wheel")) return;
-    if (running) { haptic(); void send({ action: "pause" }); setPeek(true); }
-    else setPeek((v) => !v);
+    if (running) { haptic(); void send({ action: "pause" }); }
+  }
+  /** Right click anywhere in zen mode (not in a text field): spells out the way back. */
+  function zenMenu(e: React.MouseEvent) {
+    if (!zen || (e.target as Element).closest("input")) return;
+    e.preventDefault();
+    setPeek(true);
   }
   const ring = settings.ring && active?.mode === "countdown";
   const canStart = mode === "stopwatch" || plannedMs > 0;
@@ -328,7 +334,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   return (
     <>
     <h1 className="sr-only">Timer</h1>
-    <section className={`card${zen ? " zen" : ""}${zen && running ? " running" : ""}`} aria-label="Timer" onClick={zenClick}>
+    <section className={`card${zen ? " zen" : ""}${zen && running ? " running" : ""}`} aria-label="Timer" onClick={zenClick} onContextMenu={zenMenu}>
       <div className="seg" role="group" aria-label="Mode">
         {(["stopwatch", "countdown"] as const).map((m) => (
           <button key={m} aria-pressed={(active?.mode ?? mode) === m} disabled={!!active} onClick={() => setMode(m)}>
@@ -419,9 +425,9 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
         )}
       </div>
       {zen && (
-        <button className="zenexit" data-show={peek && !running} onClick={() => { setZen(false); setPeek(false); }}>
+        <button className="zenexit" data-open={peek} aria-label="Return to normal" onClick={() => { setZen(false); setPeek(false); }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 14h6v6M10 14l-7 7M20 10h-6V4M14 10l7-7" /></svg>
-          Return to normal
+          <span>Return to normal</span>
         </button>
       )}
     </section>
