@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DEFAULTS, type Settings } from "./settings";
+import { dateKey, type Constraint } from "./constraints";
 import { get, set } from "./db";
 import { elapsedMs, isPaused, MAX_PLANNED_MS, type Mode, type Session, type Tag } from "./session";
 
@@ -98,4 +99,14 @@ export async function deleteSession(id: string): Promise<boolean> {
   if (rest.length === all.length) return false;
   await set("sessions", rest);
   return true;
+}
+
+export const getConstraints = async () => (await get<Constraint[]>("constraints")) ?? [];
+
+/** Replaces the list; today-only entries older than 2 days are dropped. */
+export async function saveConstraints(list: Constraint[], now = Date.now()): Promise<Constraint[]> {
+  const cutoff = dateKey(now - 2 * 86_400_000);
+  const kept = list.filter((c) => !c.date || c.date >= cutoff);
+  await set("constraints", kept);
+  return kept;
 }
