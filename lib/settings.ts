@@ -2,7 +2,7 @@ export const WIDGET_IDS = ["focus-today", "helper"] as const;
 export type WidgetId = (typeof WIDGET_IDS)[number];
 
 /** One flag per row of the Settings page: shared across devices (true) or kept on this device (false). */
-export const SYNC_KEYS = ["ring", "sounds", "target", "minFocus", "finish", "finishAlways", "theme", "touch", "motion"] as const;
+export const SYNC_KEYS = ["ring", "sounds", "target", "minFocus", "finish", "finishAlways", "overtime", "theme", "touch", "motion"] as const;
 export type SyncKey = (typeof SYNC_KEYS)[number];
 export const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
@@ -15,6 +15,7 @@ export type Settings = {
   minFocusMins: number; // sessions focused for less than this are not recorded; 5..180
   showFinish: boolean; // countdown: show the clock time it will finish at
   finishAlways: boolean; // ...also while it runs, without hovering (touch-friendly mode always does)
+  keepCounting: boolean; // countdown: keep counting up (+mm:ss) after zero until paused or stopped
   // The next four live on each device too (lib/device.ts); this is the shared copy used while their sync is on.
   ring: boolean;
   theme: Theme;
@@ -26,9 +27,9 @@ export type SettingsPatch = Omit<Partial<Settings>, "sync"> & { sync?: Partial<S
 
 // Things that are about the person (goals, sounds, what counts as a session) sync by default; how this screen looks does not.
 export const DEFAULTS: Settings = {
-  sounds: true, widgets: [], target: false, targetMins: 240, minFocusMins: 5, showFinish: true, finishAlways: false,
+  sounds: true, widgets: [], target: false, targetMins: 240, minFocusMins: 5, showFinish: true, finishAlways: false, keepCounting: true,
   ring: false, theme: "system", touch: false, motion: true,
-  sync: { ring: true, sounds: true, target: true, minFocus: true, finish: true, finishAlways: true, theme: false, touch: false, motion: false },
+  sync: { ring: true, sounds: true, target: true, minFocus: true, finish: true, finishAlways: true, overtime: true, theme: false, touch: false, motion: false },
 };
 export const TARGET_STEP = 30;
 export const TARGET_MAX = 12 * 60;
@@ -40,7 +41,7 @@ export function sanitize(x: unknown): SettingsPatch | null {
   if (!x || typeof x !== "object") return null;
   const o = x as Record<string, unknown>;
   const out: SettingsPatch = {};
-  for (const k of ["sounds", "target", "ring", "touch", "motion", "showFinish", "finishAlways"] as const) {
+  for (const k of ["sounds", "target", "ring", "touch", "motion", "showFinish", "finishAlways", "keepCounting"] as const) {
     if (k in o) { if (typeof o[k] !== "boolean") return null; out[k] = o[k]; }
   }
   if ("targetMins" in o) {
@@ -75,7 +76,7 @@ export function sanitize(x: unknown): SettingsPatch | null {
 }
 
 /** Device-only values for the settings whose sync is off. Not used for ring/theme/touch/motion: those live in lib/device.ts. */
-export type Local = Partial<Pick<Settings, "sounds" | "target" | "targetMins" | "minFocusMins" | "showFinish" | "finishAlways">>;
+export type Local = Partial<Pick<Settings, "sounds" | "target" | "targetMins" | "minFocusMins" | "showFinish" | "finishAlways" | "keepCounting">>;
 
 /** The values this device acts on: the shared ones, except where sync is off and this device has its own. */
 export function effective(s: Settings, local: Local): Settings {
@@ -88,5 +89,6 @@ export function effective(s: Settings, local: Local): Settings {
   if (!s.sync.minFocus && local.minFocusMins !== undefined) out.minFocusMins = local.minFocusMins;
   if (!s.sync.finish && local.showFinish !== undefined) out.showFinish = local.showFinish;
   if (!s.sync.finishAlways && local.finishAlways !== undefined) out.finishAlways = local.finishAlways;
+  if (!s.sync.overtime && local.keepCounting !== undefined) out.keepCounting = local.keepCounting;
   return out;
 }

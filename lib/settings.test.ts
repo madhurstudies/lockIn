@@ -35,4 +35,11 @@ assert.equal(f.finishAlways, true);
 assert.equal(effective(server, { showFinish: false }).showFinish, true); // synced: shared value rules
 assert.deepEqual(sanitize({ showFinish: false, finishAlways: true }), { showFinish: false, finishAlways: true });
 assert.equal(sanitize({ showFinish: 1 }), null); // sync off but nothing local yet: fall back to the shared value
+assert.equal(DEFAULTS.keepCounting, true);
+assert.equal(DEFAULTS.sync.overtime, true);
+assert.deepEqual(sanitize({ keepCounting: false }), { keepCounting: false });
+assert.equal(sanitize({ keepCounting: "no" }), null);
+assert.equal(effective(server, { keepCounting: false }).keepCounting, true); // synced: shared value rules
+assert.equal(effective({ ...server, sync: { ...server.sync, overtime: false } }, { keepCounting: false }).keepCounting, false);
+assert.equal(effective({ ...server, sync: { ...server.sync, overtime: false } }, {}).keepCounting, true); // nothing local yet
 console.log("settings ok");

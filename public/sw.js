@@ -37,7 +37,7 @@ self.addEventListener("push", (e) => {
   const d = e.data ? e.data.json() : {};
   e.waitUntil(
     (async () => {
-      (await self.registration.getNotifications({ tag: "lockin" })).forEach((n) => n.close());
+      if (!d.keep) (await self.registration.getNotifications({ tag: "lockin" })).forEach((n) => n.close());
       await self.registration.showNotification(d.title || "Time's up", {
         tag: "lockin-done",
         icon: "/icons/icon-192.png",

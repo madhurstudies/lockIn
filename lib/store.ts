@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { DEFAULTS, MIN_FOCUS_MAX, MIN_FOCUS_MIN, type Settings, type SettingsPatch } from "./settings";
-import { dateKey, type Constraint } from "./constraints";
-import { get, set } from "./db";
-import { elapsedMs, isPaused, MAX_PLANNED_MS, type Mode, type Session, type Tag } from "./session";
+import { DEFAULTS, MIN_FOCUS_MAX, MIN_FOCUS_MIN, type Settings, type SettingsPatch } from "./settings.ts";
+import { dateKey, type Constraint } from "./constraints.ts";
+import { get, set } from "./db.ts";
+import { elapsedMs, isPaused, MAX_PLANNED_MS, trimTo, type Mode, type Session, type Tag } from "./session.ts";
 
 // ponytail: sessions live in one JSON array, read-modify-write. Fine for one user and a few
 // thousand sessions; move to a Redis list/sorted set if it grows or gets concurrent writers.
@@ -23,7 +23,7 @@ async function finish(s: Session, endedAt: number) {
 export async function getActive(now = Date.now()): Promise<Session | null> {
   const s = await get<Session>("active");
   if (!s) return null;
-  if (s.mode === "countdown" && !isPaused(s) && elapsedMs(s, now) >= (s.plannedMs ?? 0)) {
+  if (s.mode === "countdown" && !s.overrun && !isPaused(s) && elapsedMs(s, now) >= (s.plannedMs ?? 0)) {
     const overshoot = elapsedMs(s, now) - (s.plannedMs ?? 0);
     await finish(s, now - overshoot);
     return null;
@@ -43,13 +43,14 @@ export async function expireIfDue(id: string, now = Date.now()): Promise<Session
   if (s.mode !== "countdown" || isPaused(s)) return null; // stale alarm
   const over = elapsedMs(s, now) - (s.plannedMs ?? 0);
   if (over < -1500) return "early";
+  if (s.overrun) return s; // keeps counting: still alert, but it stays open until the user stops it
   const end = now - over;
   await finish(s, end);
   return { ...s, endedAt: end };
 }
 
 export type Action =
-  | { action: "start"; mode: Mode; tagId?: string | null; plannedMs?: number; minMs?: number }
+  | { action: "start"; mode: Mode; tagId?: string | null; plannedMs?: number; minMs?: number; overrun?: boolean }
   | { action: "pause" | "resume" | "stop" }
   | { action: "tag"; tagId: string | null }; // retag a paused session (zen mode)
 
@@ -66,7 +67,9 @@ export async function act(a: Action, now = Date.now()): Promise<Session | null> 
     const lo = MIN_FOCUS_MIN * 60_000, hi = MIN_FOCUS_MAX * 60_000;
     const asked = Math.round(Number(a.minMs));
     const minFocusMs = asked >= lo && asked <= hi ? asked : (await getSettings()).minFocusMins * 60_000;
-    const next: Session = { id: randomUUID(), mode: a.mode, tag, startedAt: now, plannedMs: planned, minFocusMs, pauses: [] };
+    // Like the minimum, fixed now: the device's own choice when it sent one, else the shared setting.
+    const overrun = planned === undefined ? undefined : typeof a.overrun === "boolean" ? a.overrun : (await getSettings()).keepCounting;
+    const next: Session = { id: randomUUID(), mode: a.mode, tag, startedAt: now, plannedMs: planned, minFocusMs, ...(overrun ? { overrun } : {}), pauses: [] };
     await set("active", next);
     return next;
   }
@@ -118,4 +121,16 @@ export async function saveConstraints(list: Constraint[], now = Date.now()): Pro
   const kept = list.filter((c) => !c.date || c.date >= cutoff);
   await set("constraints", kept);
   return kept;
+}
+
+/** Move a finished session's end earlier (never later, never to or before its start). Null when the id is unknown or the end is not allowed. */
+export async function editEnd(id: string, endedAt: unknown): Promise<Session | null> {
+  const all = await getSessions();
+  const i = all.findIndex((s) => s.id === id);
+  if (i < 0 || typeof endedAt !== "number" || !Number.isInteger(endedAt)) return null;
+  const cur = all[i];
+  if (endedAt <= cur.startedAt || endedAt > cur.endedAt!) return null;
+  const next = trimTo(cur, endedAt);
+  await set("sessions", all.map((s, j) => (j === i ? next : s)));
+  return next;
 }

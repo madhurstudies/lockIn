@@ -8,6 +8,7 @@ export type Session = {
   startedAt: number;
   plannedMs?: number; // countdown only
   minFocusMs?: number; // fixed when it starts: ending with less focused time than this discards it instead of recording it
+  overrun?: boolean; // fixed when it starts: a countdown that keeps counting past zero until it is paused or stopped
   pauses: Pause[];
   endedAt?: number;
 };
@@ -28,6 +29,9 @@ export const elapsedMs = (s: Session, now: number) =>
 
 export const remainingMs = (s: Session, now: number) =>
   Math.max(0, (s.plannedMs ?? 0) - elapsedMs(s, now));
+
+/** Countdown time past zero: 0 before it, and always 0 for a stopwatch. */
+export const overMs = (s: Session, now: number) => (s.mode === "countdown" ? Math.max(0, elapsedMs(s, now) - (s.plannedMs ?? 0)) : 0);
 
 /** Moment a running countdown reaches zero (only meaningful while not paused). */
 export const finishesAt = (s: Session, now: number) => now + remainingMs(s, now);
@@ -52,6 +56,23 @@ export function segments(s: Session, now = Date.now()): Seg[] {
   }
   out.push({ from: at, to: end, paused: false });
   return out.filter((x) => x.to > x.from);
+}
+
+/** When a finished session had built up `focusMs` of focus (pauses before that point included); its end if it never did. */
+export function endForFocus(s: Session, focusMs: number): number {
+  let acc = 0;
+  for (const x of segments(s, s.endedAt)) {
+    if (x.paused) continue;
+    if (acc + x.to - x.from >= focusMs) return x.from + Math.max(0, focusMs - acc);
+    acc += x.to - x.from;
+  }
+  return s.endedAt!;
+}
+
+/** The finished session `s`, ending at `end` instead: pauses from `end` on are dropped and one that spans it is closed there. */
+export function trimTo(s: Session, end: number): Session {
+  const pauses = s.pauses.filter((p) => p.at < end).map((p) => (p.resumedAt === undefined || p.resumedAt > end ? { ...p, resumedAt: end } : p));
+  return { ...s, endedAt: end, pauses };
 }
 
 /** Focused ms of `s` that fall inside [from, to]; this is how sessions split across midnight. */

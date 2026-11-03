@@ -74,7 +74,7 @@ export default function SettingsView({ initial }: { initial: Settings }) {
   }
 
   /** Shared when the row syncs, otherwise only on this device. */
-  const set = (row: "sounds" | "target" | "minFocus" | "finish" | "finishAlways", patch: Local) => (s.sync[row] ? update(patch) : writeLocal(patch));
+  const set = (row: "sounds" | "target" | "minFocus" | "finish" | "finishAlways" | "overtime", patch: Local) => (s.sync[row] ? update(patch) : writeLocal(patch));
   /** ring/touch/motion/theme are applied here at once, and shared too when the row syncs. */
   const setDevice = (k: "ring" | "touch" | "motion", on: boolean) => { setDevicePref(k, on); if (s.sync[k]) setS((x) => ({ ...x, [k]: on })); };
   const pickTheme = (t: Theme) => { setTheme(t); if (s.sync.theme) void update({ theme: t }); };
@@ -83,7 +83,7 @@ export default function SettingsView({ initial }: { initial: Settings }) {
   function toggleSync(k: SyncKey, on: boolean) {
     const now: Record<SyncKey, SettingsPatch> = {
       ring: { ring: ring === "on" }, theme: { theme }, touch: { touch: touch === "on" }, motion: { motion: motion === "on" },
-      sounds: { sounds: eff.sounds }, finish: { showFinish: eff.showFinish }, finishAlways: { finishAlways: eff.finishAlways }, target: { target: eff.target, targetMins: eff.targetMins }, minFocus: { minFocusMins: eff.minFocusMins },
+      sounds: { sounds: eff.sounds }, finish: { showFinish: eff.showFinish }, finishAlways: { finishAlways: eff.finishAlways }, overtime: { keepCounting: eff.keepCounting }, target: { target: eff.target, targetMins: eff.targetMins }, minFocus: { minFocusMins: eff.minFocusMins },
     };
     if (!on && !["ring", "theme", "touch", "motion"].includes(k)) writeLocal(now[k] as Local);
     void update({ sync: { [k]: on }, ...(on ? now[k] : {}) });
@@ -109,6 +109,9 @@ export default function SettingsView({ initial }: { initial: Settings }) {
         </Row>
         <Row title="Minimum focus time" hint="A session with less focus than this is not recorded. Applies to sessions you start from now on. 5m to 3h." sync={sync("minFocus")} wide>
           <MinFocus value={eff.minFocusMins} onChange={(m) => set("minFocus", { minFocusMins: m })} />
+        </Row>
+        <Row title="Keep counting after time's up" hint="The timer doesn't stop at zero: it counts up (+mm:ss) until you pause or stop it. Applies to timers you start from now on." sync={sync("overtime")}>
+          <input type="checkbox" role="switch" className="switch" checked={eff.keepCounting} onChange={(e) => set("overtime", { keepCounting: e.target.checked })} aria-label="Keep counting after time's up" />
         </Row>
         <Row title="Show finish time" hint="While you set or pause a countdown, shows the clock time it will finish at (24-hour). While it runs, hover the timer to see it." sync={sync("finish")}>
           <input type="checkbox" role="switch" className="switch" checked={eff.showFinish} onChange={(e) => set("finish", { showFinish: e.target.checked })} aria-label="Show finish time" />

@@ -1,7 +1,7 @@
 import { Client, Receiver } from "@upstash/qstash";
 import webpush, { type PushSubscription } from "web-push";
 import { get, set } from "./db";
-import { finishesAt, formatDur, isPaused, type Session } from "./session";
+import { finishesAt, formatDur, isPaused, remainingMs, type Session } from "./session";
 
 // "Time's up" that survives a frozen or closed page: QStash calls /api/alarm at the countdown's end,
 // which closes the session and sends a Web Push to every subscribed device.
@@ -31,7 +31,7 @@ function base(origin: string) {
 
 /** Book a callback for when a running countdown ends. Stale callbacks (paused, stopped, restarted) are ignored on arrival. */
 export async function scheduleAlarm(s: Session | null, origin: string, now = Date.now()) {
-  if (!qstash || !vapid || !s || s.mode !== "countdown" || isPaused(s)) return;
+  if (!qstash || !vapid || !s || s.mode !== "countdown" || isPaused(s) || remainingMs(s, now) <= 0) return; // already in overtime: it was alerted at zero
   try {
     await qstash.publishJSON({ url: `${base(origin)}/api/alarm`, body: { id: s.id }, notBefore: Math.ceil(finishesAt(s, now) / 1000) });
   } catch (e) {
@@ -57,7 +57,7 @@ export async function addSubscription(sub: unknown) {
 /** Push "Time's up" to every device; subscriptions the push service has dropped are forgotten. */
 export async function sendDone(s: Session) {
   if (!vapid) return;
-  const payload = JSON.stringify({ title: "Time's up", body: `${s.tag?.name ?? "Timer"} · ${formatDur(s.plannedMs ?? 0)} done` });
+  const payload = JSON.stringify({ title: "Time's up", body: `${s.tag?.name ?? "Timer"} · ${formatDur(s.plannedMs ?? 0)} done`, keep: !s.endedAt }); // keep: still open (overtime), leave its Pause notification
   const subs = await getSubs();
   const gone = new Set<string>();
   await Promise.all(

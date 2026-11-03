@@ -120,6 +120,7 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 
 .stage { min-height: 196px; display: grid; align-content: center; justify-items: center; gap: 4px; }
 .readout { font-size: clamp(56px, 18vw, 84px); font-weight: 200; letter-spacing: -0.02em; line-height: 1.1; }
+.readout.over { color: var(--accent); }
 .readout.paused { color: var(--muted); }
 .status { margin: 0; font-size: 14px; height: 20px; }
 
@@ -476,3 +477,16 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 .finish.hover { opacity: 0; transition: opacity 0.2s var(--ease); }
 .ringbox:hover ~ .finish.hover { opacity: 1; }
 .card.zen .finish { font-size: 14px; }
+
+/* analysis: correcting where a session ended */
+.list li.editing { flex-wrap: wrap; }
+.editrow { flex: 1 0 100%; display: grid; gap: 10px; justify-items: start; padding: 12px 0 4px; }
+.editrow p { margin: 0; }
+.editrow .sub { margin: 0; }
+.editrow .select { height: 40px; min-width: 0; max-width: 100%; color: var(--text); }
+.editrow .error { min-height: 0; font-size: 14px; }
+.editrow .error:empty { display: none; }
+.editrow .save { color: var(--accent); }
+.editrow .save:disabled { opacity: 0.4; cursor: default; }
+:root[data-touch="on"] .editrow .select { height: 48px; }
+:root[data-touch="on"] .editrow .seg.mini button { height: 40px; }

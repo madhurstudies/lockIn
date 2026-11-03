@@ -12,7 +12,7 @@ assert.equal(remainingMs(s, 50_000), 35_000);
 assert.equal(elapsedMs({ ...s, pauses: [], endedAt: 30_000 }, 99_999), 30_000); // ended: now is ignored
 console.log("session math ok");
 
-import { clock24, elapsedAt, focusIn, parseDuration } from "./session.ts";
+import { clock24, elapsedAt, endForFocus, focusIn, overMs, parseDuration, trimTo } from "./session.ts";
 const base = { id: "y", mode: "stopwatch" as const, tag: null, pauses: [{ at: 10_000, resumedAt: 20_000 }] };
 // elapsedAt: before pause, during pause (frozen), after pause
 assert.equal(elapsedAt({ ...base, startedAt: 0 }, 5_000), 5_000);
@@ -75,3 +75,42 @@ assert.equal(clock24(at(14, 5), at(9, 0)), "14:05");
 assert.equal(clock24(at(0, 0), at(0, 0)), "00:00");
 assert.equal(clock24(at(23, 50) + 20 * 60_000, at(23, 50)), "00:10 +1");
 console.log("clock24 ok");
+
+// overMs: time past zero of a countdown, never negative, never for a stopwatch
+{
+  const m = 60_000;
+  const cd: Session = { id: "o", mode: "countdown", tag: null, startedAt: 0, plannedMs: 10 * m, pauses: [] };
+  assert.equal(overMs(cd, 5 * m), 0);
+  assert.equal(overMs(cd, 10 * m), 0);
+  assert.equal(overMs(cd, 25 * m), 15 * m);
+  assert.equal(overMs({ ...cd, pauses: [{ at: 12 * m, resumedAt: 22 * m }] }, 30 * m), 10 * m); // 30m wall - 10m paused = 20m focus, 10m past a 10m plan
+  assert.equal(overMs({ ...cd, pauses: [{ at: 12 * m }] }, 99 * m), 2 * m); // open pause freezes it
+  assert.equal(overMs({ ...cd, mode: "stopwatch" }, 25 * m), 0);
+  console.log("overMs ok");
+}
+
+// endForFocus / trimTo: correcting where a finished session ended
+{
+  const m = 60_000;
+  const done: Session = { id: "e", mode: "stopwatch", tag: null, startedAt: 0, endedAt: 60 * m, pauses: [{ at: 10 * m, resumedAt: 20 * m }] }; // 50m of focus
+  assert.equal(endForFocus(done, 5 * m), 5 * m); // before the pause
+  assert.equal(endForFocus(done, 10 * m), 10 * m); // exactly at the pause
+  assert.equal(endForFocus(done, 11 * m), 21 * m); // pause is kept: 1m after it ended
+  assert.equal(endForFocus(done, 50 * m), 60 * m); // all of it
+  assert.equal(endForFocus(done, 999 * m), 60 * m); // more than it has: clamps to the end
+  assert.equal(endForFocus(done, 0), 0);
+  assert.equal(endForFocus({ ...done, pauses: [] }, 45 * m), 45 * m);
+  assert.equal(endForFocus({ ...done, pauses: [{ at: 50 * m, resumedAt: 60 * m }] }, 50 * m), 50 * m); // trailing pause
+  const t = (end: number) => trimTo(done, end);
+  assert.deepEqual(t(40 * m).pauses, [{ at: 10 * m, resumedAt: 20 * m }]); // pause kept whole
+  assert.equal(elapsedMs(t(40 * m), 0), 30 * m);
+  assert.deepEqual(t(15 * m).pauses, [{ at: 10 * m, resumedAt: 15 * m }]); // pause spans the new end: closed there
+  assert.equal(elapsedMs(t(15 * m), 0), 10 * m);
+  assert.deepEqual(t(5 * m).pauses, []); // pause starts after the new end: gone
+  assert.deepEqual(t(10 * m).pauses, []); // starts exactly at the end: gone
+  assert.equal(t(5 * m).endedAt, 5 * m);
+  assert.deepEqual(done.pauses, [{ at: 10 * m, resumedAt: 20 * m }]); // input untouched
+  assert.equal(elapsedMs(t(endForFocus(done, 30 * m)), 0), 30 * m); // round trip: "30m focus" really is 30m
+  assert.equal(elapsedMs(t(endForFocus(done, 12 * m)), 0), 12 * m);
+  console.log("endForFocus/trimTo ok");
+}

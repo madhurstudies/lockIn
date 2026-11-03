@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import Guide from "./Guide";
 import RingToggle from "./RingToggle";
 import { WidgetRow, WidgetSheet } from "./Widgets";
-import { clock24, elapsedAt, elapsedMs, finishesAt, formatDur, isPaused, MAX_PLANNED_MS, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
+import { clock24, elapsedAt, elapsedMs, finishesAt, formatDur, isPaused, MAX_PLANNED_MS, overMs, parseDuration, remainingMs, type Mode, type Session, type Tag } from "@/lib/session";
 import type { Settings } from "@/lib/settings";
 import { haptic, readPref, usePref } from "@/lib/device";
 import { useEffective } from "@/lib/prefs";
@@ -124,6 +124,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const [t, setT] = useState(initialNow); // server-clock "now", advanced by the tick
   const [offset, setOffset] = useState(0); // server clock minus local clock (set on first sync)
   const finishing = useRef(false);
+  const notified = useRef<string | null>(null);
   const [shared, setSettings] = useState(initialSettings); // as saved on the server
   const settings = useEffective(shared); // what this device acts on (rows with sync off keep their own value)
   const [typing, setTyping] = useState<string | null>(null); // text while the user types a duration
@@ -147,7 +148,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     const o = j.now - (t0 + Date.now()) / 2; // assume symmetric latency
     const prev = activeRef.current;
     // The server already closed a countdown that ran out while this page was frozen or away.
-    if (prev?.mode === "countdown" && !j.active && !finishing.current && !isPaused(prev) && remainingMs(prev, j.now) <= 0)
+    if (prev?.mode === "countdown" && !prev.overrun && !j.active && !finishing.current && !isPaused(prev) && remainingMs(prev, j.now) <= 0)
       setSaved(doneMsg(prev));
     activeRef.current = j.active;
     setOffset(o);
@@ -198,9 +199,11 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
     if (!active) finishing.current = false;
     if (expired && !finishing.current) {
       finishing.current = true;
+      if (active!.overrun && overMs(active!, t) > 5_000) return; // page opened well into overtime: it already alerted at zero
       if (settings.sounds) doubleBeep();
       haptic([200, 100, 200]);
-      setSaved(doneMsg(active!));
+      if (active!.overrun) return; // keeps counting up until the user stops it
+      setSaved(doneMsg(active!)); // eslint-disable-line react-hooks/set-state-in-effect -- once, when the countdown ends
       send({ action: "stop" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,7 +229,8 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   // Page-side end alert. The OS may freeze a hidden page, so the server also pushes one (lib/alarm.ts);
   // both use the "lockin-done" tag, so the second replaces the first instead of stacking.
   useEffect(() => {
-    if (!expired || !("Notification" in window) || Notification.permission !== "granted") return;
+    if (!expired || notified.current === active?.id || (active?.overrun && overMs(active, t) > 5_000) || !("Notification" in window) || Notification.permission !== "granted") return;
+    notified.current = active?.id ?? null; // once per session, not again when overtime is paused and resumed
     navigator.serviceWorker?.ready.then((reg) =>
       reg.showNotification("Time's up", {
         tag: "lockin-done", icon: "/icons/icon-192.png", body: saved || "Session complete", requireInteraction: true, vibrate: [200, 100, 200],
@@ -252,7 +256,9 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   const shownMs = active
     ? active.mode === "countdown" ? remainingMs(active, t) : elapsedMs(active, t)
     : mode === "countdown" ? plannedMs : 0;
-  const readout = fmt(shownMs, active?.mode === "countdown" ? "ceil" : "floor");
+  // Past zero with "keep counting": +mm:ss of overtime.
+  const overtime = !!active?.overrun && active.mode === "countdown" && remainingMs(active, t) <= 0;
+  const readout = overtime ? `+${fmt(overMs(active!, t), "floor")}` : fmt(shownMs, active?.mode === "countdown" ? "ceil" : "floor");
 
   useEffect(() => {
     document.title = active ? `${readout} · Lock In` : "Lock In";
@@ -308,7 +314,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
       if (Notification.permission === "default") Notification.requestPermission().then((p) => { if (p === "granted") void subscribePush(); });
       else if (Notification.permission === "granted") subscribePush();
     }
-    send({ action: "start", mode, tagId, plannedMs: mode === "countdown" ? plannedMs : undefined, minMs: settings.minFocusMins * 60_000 });
+    send({ action: "start", mode, tagId, plannedMs: mode === "countdown" ? plannedMs : undefined, minMs: settings.minFocusMins * 60_000, overrun: mode === "countdown" ? settings.keepCounting : undefined });
   };
   const stop = () => {
     haptic();
@@ -351,11 +357,11 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
   // Finish time (countdowns only): idle and paused always show it; while running it shows on hover, or always in touch mode / "show permanently".
   const client = useSyncExternalStore(() => () => {}, () => true, () => false); // clock times are the browser's, not the server's
   const counting = active ? active.mode === "countdown" : mode === "countdown";
-  const endAt = !counting ? null : active ? finishesAt(active, t) : plannedMs > 0 ? t + plannedMs : null;
+  const endAt = !counting || overtime ? null : active ? finishesAt(active, t) : plannedMs > 0 ? t + plannedMs : null;
   const finishPinned = !running || touch === "on" || settings.finishAlways;
   const activeTag = active ? active.tag : tags.find((x) => x.id === tagId) ?? null;
   const menuOpen = tagMenu && zen && !running;
-  const plain = paused ? "Paused" : active ? (active.mode === "countdown" ? "Remaining" : "Elapsed") : saved || " ";
+  const plain = paused ? "Paused" : overtime ? "Over time" : active ? (active.mode === "countdown" ? "Remaining" : "Elapsed") : saved || " ";
   // Zen: the tag's name stands in for "Remaining" / "Elapsed"; other messages (Paused, Saved…) stay beside it.
   const zenTag = zen && activeTag;
   const pickTag = (id: string | null) => { setTagMenu(false); haptic(); if (active) void send({ action: "tag", tagId: id }); else setTagId(id); };
@@ -404,7 +410,7 @@ export default function TimerView({ initialActive, initialNow, initialTags, init
         ) : (
           <div className={`ringbox${ring ? " has-ring" : ""}`} onClick={zen && active ? (e) => { squish(e.currentTarget); toggle(); } : undefined}>
             {ring && <Ring session={active!} t={t} />}
-            <div className={`readout num${paused ? " paused" : ""}`} role="timer" aria-live="off">{readout}</div>
+            <div className={`readout num${overtime ? " over" : ""}${paused ? " paused" : ""}`} role="timer" aria-live="off">{readout}</div>
           </div>
         )}
         <p className={`status muted${zen ? " zenstatus" : ""}`} aria-live="polite">
