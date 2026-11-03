@@ -3,7 +3,7 @@ import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 import BarChart, { type BarsOpts } from "./Chart";
 import { bucketize, byHourOfDay, dayEdges, focusIn, formatDur, isOvernight, pausedIn, partOf, toSeries, type Buckets } from "@/lib/analysis";
-import { elapsedMs, endForFocus, overMs, parseDuration, pausedMs, segments, trimTo, type Session } from "@/lib/session";
+import { elapsedMs, endForFocus, overMs, parseDuration, pausedMs, segments, withEnd, type Session } from "@/lib/session";
 
 const HOUR = 3_600_000;
 const RANGES = { today: ["Today", 1], week: ["Week", 7], month: ["Month", 30] } as const;
@@ -35,10 +35,11 @@ const p2 = (n: number) => String(n).padStart(2, "0");
 const toInput = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`; };
 const when = (t: number) => new Date(t).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-/** Correct where a finished session ended (earlier only; the start is fixed): by clock time, or by how long you really focused. */
+/** Correct where a finished session ended, earlier or later (the start is fixed, and it can't end in the future): by clock time, or by how long you really focused. */
 function EditEnd({ s, onSaved, onCancel }: { s: Session; onSaved: (s: Session) => void; onCancel: () => void }) {
   const end0 = s.endedAt!;
   const focus0 = elapsedMs(s, end0);
+  const [now] = useState(Date.now); // what "the future" means while this editor is open
   const [by, setBy] = useState<"end" | "focus">("end");
   const [at, setAt] = useState(toInput(end0));
   const [dur, setDur] = useState("");
@@ -52,14 +53,15 @@ function EditEnd({ s, onSaved, onCancel }: { s: Session; onSaved: (s: Session) =
       if (!at || Number.isNaN(t)) return { err: "Pick a date and time." };
       const end = at === toInput(end0) ? end0 : t; // same minute as recorded: keep the exact end
       if (end <= s.startedAt) return { err: "It has to end after it started." };
-      if (end > end0) return { err: "It can't end later than recorded." };
+      if (end > now) return { err: "That's in the future." };
       return { end };
     }
     if (!dur.trim()) return {};
     const mins = parseDuration(dur, 100_000);
     if (mins === null) return { err: "Try 45, 1:30 or 2h." };
-    if (mins * 60_000 >= focus0) return { err: `Shorter than the recorded ${formatDur(focus0)}, please.` };
-    return { end: endForFocus(s, mins * 60_000) };
+    const end = endForFocus(s, mins * 60_000);
+    if (end > now) return { err: "That would end in the future." };
+    return { end };
   })();
   const changed = r.end !== undefined && r.end !== end0;
 
@@ -76,18 +78,18 @@ function EditEnd({ s, onSaved, onCancel }: { s: Session; onSaved: (s: Session) =
 
   return (
     <form className="editrow" onSubmit={save} noValidate>
-      <p className="muted sub">Recorded: {when(s.startedAt)} to {when(end0)} · {formatDur(focus0)} focused. The start can&apos;t change; the end can only move earlier.</p>
+      <p className="muted sub">Recorded: {when(s.startedAt)} to {when(end0)} · {formatDur(focus0)} focused. The start can&apos;t change; the end can move either way, up to now.</p>
       <div className="seg mini" role="group" aria-label="Correct by">
         <button type="button" aria-pressed={by === "end"} onClick={() => setBy("end")}>Ended at</button>
         <button type="button" aria-pressed={by === "focus"} onClick={() => setBy("focus")}>Focused</button>
       </div>
       {by === "end" ? (
-        <input type="datetime-local" className="select" step={60} min={toInput(s.startedAt)} max={toInput(end0)} value={at} onChange={(e) => setAt(e.target.value)} aria-label="New end time" />
+        <input type="datetime-local" className="select" step={60} min={toInput(s.startedAt)} max={toInput(now)} value={at} onChange={(e) => setAt(e.target.value)} aria-label="New end time" />
       ) : (
         <input type="text" className="select" value={dur} placeholder="45, 1:30, 2h" autoComplete="off" onChange={(e) => setDur(e.target.value)} aria-label="Focused time" autoFocus />
       )}
       <p className="muted sub num" aria-live="polite">
-        {r.end !== undefined && `Focus ${formatDur(elapsedMs(trimTo(s, r.end), r.end))} · ends ${when(r.end)}`}
+        {r.end !== undefined && `Focus ${formatDur(elapsedMs(withEnd(s, r.end), r.end))} · ends ${when(r.end)}`}
       </p>
       <p className="error" role="alert">{r.err ?? (failed ? "Couldn't save. Try again." : "")}</p>
       <span className="rowactions">

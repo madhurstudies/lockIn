@@ -115,17 +115,27 @@ await act({ action: "pause" }, T0 + 10 * M);
 await act({ action: "resume" }, T0 + 20 * M);
 await act({ action: "stop" }, T0 + 60 * M); // 50m of focus
 const orig = await only();
-const edit = async (end: unknown, id_ = orig.id) => editEnd(id_, end);
+const NOW = T0 + 100 * M; // "now" for edits: ends may be anywhere after the start up to here
+const edit = async (end: unknown, id_ = orig.id) => editEnd(id_, end, NOW);
 const stored = async () => (await getSessions())[0];
 
 // rejected: nothing changes
-for (const bad of [orig.startedAt, orig.startedAt - 1, orig.endedAt! + 1, orig.endedAt! + 60 * M, NaN, Infinity, 1.5, "99", null, undefined, {}, [], true, -5])
+for (const bad of [orig.startedAt, orig.startedAt - 1, NOW + 1, NOW + 60 * M, NaN, Infinity, 1.5, "99", null, undefined, {}, [], true, -5])
   assert.equal(await edit(bad), null, `rejected: ${String(bad)}`);
 assert.equal(await edit(T0 + 30 * M, "no-such-id"), null);
 assert.deepEqual(await stored(), orig, "rejected edits leave it untouched");
 
-// later pause-free end: pause kept, only the tail is cut
-let e = (await edit(T0 + 40 * M))!;
+// extending past the recorded end is allowed (up to now): pauses stay, the extra is focus
+let e = (await edit(T0 + 80 * M))!;
+assert.equal(e.endedAt, T0 + 80 * M);
+assert.deepEqual(e.pauses, orig.pauses);
+assert.equal(elapsedMs(e, e.endedAt!), 70 * M, "50m recorded + 20m more");
+assert.equal((await edit(NOW))?.endedAt, NOW, "exactly now is fine");
+assert.equal(await edit(NOW + 1), null, "not the future");
+assert.deepEqual((await stored()).pauses, orig.pauses);
+
+// back to a pause-free shorter end: pause kept, only the tail is cut
+e = (await edit(T0 + 40 * M))!;
 assert.equal(e.endedAt, T0 + 40 * M);
 assert.equal(elapsedMs(e, e.endedAt!), 30 * M);
 assert.deepEqual(e.pauses, orig.pauses);
@@ -142,7 +152,9 @@ e = (await edit(T0 + 6 * M))!;
 assert.deepEqual(e.pauses, []);
 assert.equal(elapsedMs(e, e.endedAt!), 6 * M);
 // now the recorded end is T0+6m: it can't be moved later again
-assert.equal(await edit(T0 + 7 * M), null, "no extending");
+e = (await edit(T0 + 90 * M))!; // the earlier trim dropped the pause for good: it is all focus now
+assert.equal(elapsedMs(e, e.endedAt!), 90 * M);
+assert.deepEqual(e.pauses, []);
 assert.equal((await edit(T0 + 6 * M))?.endedAt, T0 + 6 * M, "same end is allowed (no-op)");
 assert.equal((await edit(T0 + M))?.endedAt, T0 + M, "down to one minute after the start");
 
@@ -153,7 +165,7 @@ await act({ action: "stop" }, T0 + 30 * M);
 await act({ action: "start", mode: "stopwatch", minMs: 5 * M }, T0 + 60 * M);
 await act({ action: "stop" }, T0 + 90 * M);
 const [one, two] = await getSessions();
-await editEnd(two.id, T0 + 70 * M);
+await editEnd(two.id, T0 + 70 * M, NOW);
 const after = await getSessions();
 assert.deepEqual(after[0], one);
 assert.equal(after[1].endedAt, T0 + 70 * M);

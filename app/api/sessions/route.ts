@@ -17,7 +17,7 @@ export async function DELETE(req: Request) {
     : NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
-/** Move a session's end earlier: { id, endedAt }. The start can't be edited and the end can't move later. */
+/** Correct where a session ended: { id, endedAt }, earlier or later but not in the future. The start can't be edited. */
 export async function PATCH(req: Request) {
   const b = (await req.json().catch(() => null)) as { id?: unknown; endedAt?: unknown } | null;
   if (!b || typeof b.id !== "string") return NextResponse.json({ error: "Bad request" }, { status: 400 });

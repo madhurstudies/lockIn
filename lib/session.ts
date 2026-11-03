@@ -58,7 +58,8 @@ export function segments(s: Session, now = Date.now()): Seg[] {
   return out.filter((x) => x.to > x.from);
 }
 
-/** When a finished session had built up `focusMs` of focus (pauses before that point included); its end if it never did. */
+/** When a finished session had built up `focusMs` of focus (pauses before that point included). Asking for more than it has
+ *  extends it: the extra is focus straight after its end. */
 export function endForFocus(s: Session, focusMs: number): number {
   let acc = 0;
   for (const x of segments(s, s.endedAt)) {
@@ -66,11 +67,11 @@ export function endForFocus(s: Session, focusMs: number): number {
     if (acc + x.to - x.from >= focusMs) return x.from + Math.max(0, focusMs - acc);
     acc += x.to - x.from;
   }
-  return s.endedAt!;
+  return s.endedAt! + (focusMs - acc);
 }
 
-/** The finished session `s`, ending at `end` instead: pauses from `end` on are dropped and one that spans it is closed there. */
-export function trimTo(s: Session, end: number): Session {
+/** The finished session `s`, ending at `end` instead. Earlier: pauses from `end` on are dropped and one that spans it is closed there. Later: just a later end. */
+export function withEnd(s: Session, end: number): Session {
   const pauses = s.pauses.filter((p) => p.at < end).map((p) => (p.resumedAt === undefined || p.resumedAt > end ? { ...p, resumedAt: end } : p));
   return { ...s, endedAt: end, pauses };
 }

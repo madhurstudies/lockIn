@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { DEFAULTS, MIN_FOCUS_MAX, MIN_FOCUS_MIN, type Settings, type SettingsPatch } from "./settings.ts";
 import { dateKey, type Constraint } from "./constraints.ts";
 import { get, set } from "./db.ts";
-import { elapsedMs, isPaused, MAX_PLANNED_MS, trimTo, type Mode, type Session, type Tag } from "./session.ts";
+import { elapsedMs, isPaused, MAX_PLANNED_MS, withEnd, type Mode, type Session, type Tag } from "./session.ts";
 
 // ponytail: sessions live in one JSON array, read-modify-write. Fine for one user and a few
 // thousand sessions; move to a Redis list/sorted set if it grows or gets concurrent writers.
@@ -123,14 +123,14 @@ export async function saveConstraints(list: Constraint[], now = Date.now()): Pro
   return kept;
 }
 
-/** Move a finished session's end earlier (never later, never to or before its start). Null when the id is unknown or the end is not allowed. */
-export async function editEnd(id: string, endedAt: unknown): Promise<Session | null> {
+/** Correct where a finished session ended, earlier or later: after its start and not in the future. Null when the id is unknown or the end is not allowed. */
+export async function editEnd(id: string, endedAt: unknown, now = Date.now()): Promise<Session | null> {
   const all = await getSessions();
   const i = all.findIndex((s) => s.id === id);
   if (i < 0 || typeof endedAt !== "number" || !Number.isInteger(endedAt)) return null;
   const cur = all[i];
-  if (endedAt <= cur.startedAt || endedAt > cur.endedAt!) return null;
-  const next = trimTo(cur, endedAt);
+  if (endedAt <= cur.startedAt || endedAt > now) return null;
+  const next = withEnd(cur, endedAt);
   await set("sessions", all.map((s, j) => (j === i ? next : s)));
   return next;
 }
