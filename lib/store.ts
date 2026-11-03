@@ -10,12 +10,23 @@ import { elapsedMs, isPaused, MAX_PLANNED_MS, withEnd, type Mode, type Session, 
 export const getTags = async () => (await get<Tag[]>("tags")) ?? [];
 export const getSessions = async () => (await get<Session[]>("sessions")) ?? [];
 
+// The whole list is read and written on most requests, so on a free database (10 GB/month of bandwidth) it must stay small:
+// about 1 MB is ~3000 sessions, roughly a year of use. Past that the oldest sessions are dropped.
+export const SESSIONS_MAX_BYTES = 1_000_000;
+/** `list` (oldest first) trimmed from the front to 90% of the cap once it passes the cap; unchanged below it. */
+export function prune(list: Session[]): Session[] {
+  const bytes = Buffer.byteLength(JSON.stringify(list));
+  if (bytes <= SESSIONS_MAX_BYTES) return list;
+  const target = SESSIONS_MAX_BYTES * 0.9;
+  return prune(list.slice(Math.max(1, Math.ceil(((bytes - target) / bytes) * list.length)))); // re-check: sizes vary
+}
+
 async function finish(s: Session, endedAt: number) {
   const done = { ...s, endedAt };
   // an open pause closes at the end of the session
   done.pauses = s.pauses.map((p) => (p.resumedAt === undefined ? { ...p, resumedAt: endedAt } : p));
   // Too little focus to count (its minimum was fixed at the start, so this holds on any device or alarm).
-  if (elapsedMs(done, endedAt) >= (s.minFocusMs ?? 0)) await set("sessions", [...(await getSessions()), done]);
+  if (elapsedMs(done, endedAt) >= (s.minFocusMs ?? 0)) await set("sessions", prune([...(await getSessions()), done]));
   await set("active", null);
 }
 

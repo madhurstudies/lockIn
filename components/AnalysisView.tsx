@@ -2,12 +2,14 @@
 import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 import BarChart, { type BarsOpts } from "./Chart";
+import Calendar, { fromDateKey } from "./Calendar";
+import { dateKey } from "@/lib/constraints";
 import { bucketize, byHourOfDay, dayEdges, focusIn, formatDur, isOvernight, pausedIn, partOf, toSeries, type Buckets } from "@/lib/analysis";
 import { elapsedMs, endForFocus, overMs, parseDuration, pausedMs, segments, withEnd, type Session } from "@/lib/session";
 
 const HOUR = 3_600_000;
 const RANGES = { today: ["Today", 1], week: ["Week", 7], month: ["Month", 30] } as const;
-type Range = keyof typeof RANGES;
+type Range = keyof typeof RANGES | "calendar" | "day"; // "day": one chosen date, opened from the calendar
 type Mode = "tag" | "total";
 
 function Mode({ value, onChange, label }: { value: Mode; onChange: (m: Mode) => void; label: string }) {
@@ -108,17 +110,25 @@ export default function AnalysisView() {
   const [hourMode, setHourMode] = useState<Mode>("tag");
   const [confirm, setConfirm] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const days = RANGES[range][1];
+  const [date, setDate] = useState(0); // local midnight of the chosen day
+  const [today] = useState(() => dayEdges(Date.now(), 1)[0]);
+  const days = range === "week" ? 7 : range === "month" ? 30 : 1;
 
   useEffect(() => {
+    if (range === "calendar") return;
     let live = true;
     const now = Date.now();
-    const from = dayEdges(now - (days - 1) * 86_400_000, 1)[0];
-    fetch(`/api/sessions?from=${from}&to=${now}`, { cache: "no-store" })
+    const from = range === "day" ? date : dayEdges(now - (days - 1) * 86_400_000, 1)[0];
+    const to = range === "day" ? dayEdges(date, 1)[1] : now; // a chosen day: all of it
+    fetch(`/api/sessions?from=${from}&to=${to}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
-      .then((sessions: Session[]) => live && setData({ from, now, sessions })); // overlapping sessions, clipped below
+      .then((sessions: Session[]) => live && setData({ from, now: Math.min(to, now), sessions })); // overlapping sessions, clipped below
     return () => { live = false; };
-  }, [days]);
+  }, [range, date, days]);
+
+  const go = (r: Range) => { setData(null); setRange(r); };
+  const open = (day: number) => { setData(null); setDate(day); setRange("day"); };
+  const shift = (n: number) => { const d = new Date(date); open(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n).getTime()); };
 
   async function remove(id: string) {
     setConfirm(null);
@@ -174,18 +184,32 @@ export default function AnalysisView() {
       <Script src="/vendor/charts.js" strategy="afterInteractive" onReady={() => setReady(true)} />
       <h1 className="pagetitle">Analysis</h1>
       <div className="seg" role="group" aria-label="Range">
-        {(Object.keys(RANGES) as Range[]).map((r) => (
-          <button key={r} aria-pressed={range === r} onClick={() => { setData(null); setRange(r); }}>{RANGES[r][0]}</button>
+        {(Object.keys(RANGES) as (keyof typeof RANGES)[]).map((r) => (
+          <button key={r} aria-pressed={range === r} onClick={() => go(r)}>{RANGES[r][0]}</button>
         ))}
+        <button aria-pressed={range === "calendar" || range === "day"} onClick={() => go("calendar")}>Calendar</button>
       </div>
 
-      <dl className="totals">
+      {range === "calendar" && <Calendar onPick={open} />}
+
+      {range === "day" && (
+        <div className="dayhead">
+          <button className="pill" onClick={() => shift(-1)} aria-label="Previous day">‹</button>
+          <input type="date" className="select" value={dateKey(date)} max={dateKey(today)} aria-label="Date"
+            onChange={(e) => e.target.value && open(Math.min(today, fromDateKey(e.target.value)))} />
+          <button className="pill" onClick={() => shift(1)} disabled={date >= today} aria-label="Next day">›</button>
+          <span className="muted dayname">{new Date(date).toLocaleDateString(undefined, { weekday: "long" })}</span>
+          <button className="textbtn back" onClick={() => go("calendar")}>Calendar</button>
+        </div>
+      )}
+
+      {range !== "calendar" && <dl className="totals">
         <div><dt className="muted">Focus</dt><dd className="num">{view ? formatDur(view.focus) : "–"}</dd></div>
         <div><dt className="muted">Paused</dt><dd className="num">{view ? formatDur(view.paused) : "–"}</dd></div>
         <div><dt className="muted">Sessions</dt><dd className="num">{view ? view.list.length : "–"}</dd></div>
-      </dl>
+      </dl>}
 
-      {empty && <p className="empty muted">No focus sessions in this range yet. Start one on the Timer tab.</p>}
+      {empty && <p className="empty muted">{range === "day" ? "No focus sessions on this day." : "No focus sessions in this range yet. Start one on the Timer tab."}</p>}
 
       {view && !empty && timeOpts && hourOpts && (
         <>

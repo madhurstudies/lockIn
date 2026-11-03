@@ -76,5 +76,20 @@ export function dayEdges(t: number, count: number): number[] {
   return Array.from({ length: count + 1 }, (_, i) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + i).getTime());
 }
 
+/** Focused ms per local day (key: that day's local midnight); sessions that cross midnight are split between the days. */
+export function dailyFocus(sessions: Session[], now: number): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const s of sessions) {
+    const end = s.endedAt ?? now;
+    for (let d = dayEdges(s.startedAt, 1)[0]; d < end; ) {
+      const next = dayEdges(d, 1)[1];
+      const ms = focusIn(s, d, next, now);
+      if (ms) out.set(d, (out.get(d) ?? 0) + ms);
+      d = next;
+    }
+  }
+  return out;
+}
+
 /** Does the session cross a local midnight? */
 export const isOvernight = (s: Session) => new Date(s.startedAt).toDateString() !== new Date(s.endedAt ?? s.startedAt).toDateString();

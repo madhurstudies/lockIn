@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { set } from "./db.ts";
 import { elapsedMs, overMs } from "./session.ts";
-import { act, editEnd, expireIfDue, getActive, getSessions, saveSettings } from "./store.ts";
+import { act, editEnd, expireIfDue, getActive, getSessions, prune, saveSettings, SESSIONS_MAX_BYTES } from "./store.ts";
+import type { Session } from "./session.ts";
 
 const M = 60_000, T0 = 1_800_000_000_000;
 const reset = async () => { await set("active", null); await set("sessions", []); await set("settings", null); };
@@ -169,5 +170,37 @@ await editEnd(two.id, T0 + 70 * M, NOW);
 const after = await getSessions();
 assert.deepEqual(after[0], one);
 assert.equal(after[1].endedAt, T0 + 70 * M);
+
+// ---- keeping the list small enough for a free database ----
+const fake = (i: number): Session => ({
+  id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, mode: "stopwatch", tag: { id: "11111111-1111-4111-8111-111111111111", name: "GKGS", color: "#ff2d55" },
+  startedAt: T0 + i * 2 * M, endedAt: T0 + i * 2 * M + M, minFocusMs: 300_000, pauses: [{ at: T0 + i * 2 * M + 10, resumedAt: T0 + i * 2 * M + 20 }],
+});
+const bytes = (l: Session[]) => Buffer.byteLength(JSON.stringify(l));
+const small = Array.from({ length: 50 }, (_, i) => fake(i));
+assert.equal(prune(small), small, "under the cap: untouched (same list)");
+const big = Array.from({ length: 4000 }, (_, i) => fake(i));
+assert.ok(bytes(big) > SESSIONS_MAX_BYTES, "test list really is over the cap");
+const kept = prune(big);
+assert.ok(bytes(kept) <= SESSIONS_MAX_BYTES * 0.9 + 1, "trimmed to ~90% of the cap");
+assert.ok(kept.length > 2000, "still keeps thousands of sessions");
+assert.deepEqual(kept.at(-1), big.at(-1), "newest kept");
+assert.deepEqual(kept, big.slice(big.length - kept.length), "only the oldest were dropped, order kept");
+// the real path: stopping a session on an over-full list prunes it and keeps the new one
+await reset();
+await set("sessions", big);
+await act({ action: "start", mode: "stopwatch", minMs: 5 * M }, T0 + 99_999 * M);
+await act({ action: "stop" }, T0 + 99_999 * M + 6 * M);
+const after2 = await getSessions();
+assert.ok(bytes(after2) <= SESSIONS_MAX_BYTES, "list stays under the cap");
+assert.ok(after2.length < big.length + 1);
+assert.equal(after2.at(-1)!.endedAt, T0 + 99_999 * M + 6 * M, "the new session is the newest");
+assert.deepEqual(after2.slice(0, -1), big.slice(big.length - (after2.length - 1)), "the rest is the newest tail of the old list");
+// a normal-sized list is left alone by a new session
+await reset();
+await set("sessions", small);
+await act({ action: "start", mode: "stopwatch", minMs: 5 * M }, T0 + 99_999 * M);
+await act({ action: "stop" }, T0 + 99_999 * M + 6 * M);
+assert.equal((await getSessions()).length, 51);
 
 console.log("store ok");

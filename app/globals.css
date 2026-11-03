@@ -490,3 +490,32 @@ main { max-width: 960px; margin: 0 auto; padding: 8px 16px 48px; }
 .editrow .save:disabled { opacity: 0.4; cursor: default; }
 :root[data-touch="on"] .editrow .select { height: 48px; }
 :root[data-touch="on"] .editrow .seg.mini button { height: 40px; }
+
+/* analysis: calendar of days (shade = focus) and a chosen day */
+.seg button { min-width: 0; }
+.jump { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.jump .select { height: 32px; }
+.heat { overflow-x: auto; padding: 4px 0 8px; --cell: 14px; }
+.heatmonths, .heatgrid { width: max-content; }
+.heatmonths { display: grid; gap: 3px; height: 16px; font-size: 11px; margin-bottom: 4px; }
+.heatmonths span { white-space: nowrap; }
+.heatgrid { display: grid; grid-template-rows: repeat(7, var(--cell)); grid-auto-flow: column; grid-auto-columns: var(--cell); gap: 3px; }
+.cell { display: block; width: var(--cell, 14px); height: var(--cell, 14px); padding: 0; border-radius: 3px; background: var(--raised); }
+.cell.l1 { background: color-mix(in srgb, var(--accent) 28%, var(--raised)); }
+.cell.l2 { background: color-mix(in srgb, var(--accent) 52%, var(--raised)); }
+.cell.l3 { background: color-mix(in srgb, var(--accent) 76%, var(--raised)); }
+.cell.l4 { background: var(--accent); }
+.cell.today { outline: 1.5px solid var(--text); outline-offset: 1px; }
+button.cell:hover { outline: 1.5px solid var(--muted); outline-offset: 1px; }
+.heatfoot { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12px; margin-top: 4px; flex-wrap: wrap; }
+.legend2 { display: inline-flex; align-items: center; gap: 4px; }
+.legend2 .cell { --cell: 12px; }
+.dayhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dayhead .pill { width: 36px; padding: 0; font-size: 18px; line-height: 1; }
+.dayhead .pill:disabled { opacity: 0.4; cursor: default; }
+.dayhead .select { height: 36px; color: var(--text); }
+.dayname { flex: 1; }
+.dayhead .back { color: var(--muted); }
+:root[data-touch="on"] .heat { --cell: 20px; }
+:root[data-touch="on"] .dayhead .pill { width: 44px; height: 44px; }
+.analysis > * { min-width: 0; } /* a wide child (the calendar) scrolls inside its panel instead of widening the page */

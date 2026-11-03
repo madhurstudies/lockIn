@@ -29,7 +29,7 @@ const cases: [string, number | null][] = [["25", 25], ["90", 90], ["1:30", 90], 
 for (const [i, want] of cases) assert.equal(parseDuration(i), want, i);
 console.log("session math 2 ok");
 
-import { bucketize } from "./analysis.ts";
+import { bucketize, dailyFocus } from "./analysis.ts";
 const ov = { id: "n", mode: "stopwatch" as const, tag: null, pauses: [], startedAt: 23 * H, endedAt: 25 * H };
 const bk = bucketize([ov], [0, 24 * H, 48 * H], 99 * H);
 assert.deepEqual(bk.get("none")!.values, [H, H]); // overnight splits at midnight, no double count
@@ -119,4 +119,32 @@ console.log("clock24 ok");
   assert.equal(t(80 * m).endedAt, 80 * m);
   assert.equal(elapsedMs(t(80 * m), 0), 70 * m);
   console.log("endForFocus/withEnd ok");
+}
+
+// dailyFocus: focus per local day, split at midnight, pauses excluded
+{
+  const m = 60_000, day = (n: number) => new Date(2026, 10, n).getTime(), at = (n: number, h: number, min = 0) => day(n) + (h * 60 + min) * m;
+  const mk = (id: string, startedAt: number, endedAt: number, pauses: Session["pauses"] = []): Session => ({ id, mode: "stopwatch", tag: null, startedAt, endedAt, pauses });
+  assert.equal(dailyFocus([], at(9, 12)).size, 0);
+  const one = dailyFocus([mk("a", at(2, 9), at(2, 10, 30))], at(9, 12));
+  assert.deepEqual([...one], [[day(2), 90 * m]]);
+  // two sessions on one day add up; another day stays separate; a pause is not focus
+  const many = dailyFocus([mk("a", at(2, 9), at(2, 10)), mk("b", at(2, 14), at(2, 15), [{ at: at(2, 14, 20), resumedAt: at(2, 14, 30) }]), mk("c", at(3, 8), at(3, 8, 45))], at(9, 12));
+  assert.equal(many.get(day(2)), 110 * m);
+  assert.equal(many.get(day(3)), 45 * m);
+  assert.equal(many.size, 2);
+  // across midnight: split between the two days
+  const over = dailyFocus([mk("o", at(4, 23, 30), at(5, 1))], at(9, 12));
+  assert.equal(over.get(day(4)), 30 * m);
+  assert.equal(over.get(day(5)), 60 * m);
+  // spanning more than two days (e.g. a long edited session)
+  const long = dailyFocus([mk("l", at(6, 22), at(8, 2))], at(9, 12));
+  assert.equal(long.get(day(6)), 120 * m);
+  assert.equal(long.get(day(7)), 24 * 60 * m);
+  assert.equal(long.get(day(8)), 120 * m);
+  // a pause that straddles midnight is not counted on either day
+  const gap = dailyFocus([mk("g", at(10, 23), at(11, 1), [{ at: at(10, 23, 30), resumedAt: at(11, 0, 30) }])], at(12, 12));
+  assert.equal(gap.get(day(10)), 30 * m);
+  assert.equal(gap.get(day(11)), 30 * m);
+  console.log("dailyFocus ok");
 }
